@@ -90,6 +90,24 @@ The original intent was to write a script to generate a prompt that gave me reco
 
 This example `docker-compose.yml` demonstrates a basic setup for AiArr. You'll need to adjust volumes and environment variables according to your specific setup. Environment variables can be configured here or left blank and set in the UI. 
 
+### Basic
+```yaml
+services:
+  aiarr:
+    image: ghcr.io/tsquillario/aiarr:latest 
+    container_name: aiarr
+    restart: unless-stopped
+    ports:
+      - "8000:8000" 
+    volumes:
+      - ./aiarr_config:/config
+      - ./aiarr_backups:/backups 
+    environment:
+      # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
+      - VITE_AIARR_URL=http://192.168.0.100:8000/api
+```
+
+### Advanced
 ```yaml
 # networks:
 #   your_custom_network:
@@ -116,7 +134,7 @@ services:
       # - APP_AUTO_MEDIA_SAVE=True
       # - APP_SYSTEM_PROMPT="Your custom system prompt for Gemini"
 
-      # Client needs to know where the API is (exposed on host port 8001). This will be your host machine IP or hostname since the client is connecting from your browser
+      # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
       - VITE_AIARR_URL=http://192.168.0.100:8000/api
 
       # --- Jellyfin Settings (Optional) ---
