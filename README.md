@@ -117,7 +117,7 @@ services:
       # - APP_SYSTEM_PROMPT="Your custom system prompt for Gemini"
 
       # Client needs to know where the API is (exposed on host port 8001). This will be your host machine IP or hostname since the client is connecting from your browser
-      - VITE_AIARR_URL=http://192.168.0.100:8200/api
+      - VITE_AIARR_URL=http://192.168.0.100:8000/api
 
       # --- Jellyfin Settings (Optional) ---
       - JELLYFIN_ENABLED=True # Set to True if using Jellyfin
