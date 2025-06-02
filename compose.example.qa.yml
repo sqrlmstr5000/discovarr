@@ -1,0 +1,39 @@
+# Local build of the production Dockerfile
+
+networks:
+  jellyfin_htpc:
+    external: true
+
+services:
+  aiarr-qa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - PUID=1884
+        - PGID=1884
+    container_name: aiarr-qa
+    ports:
+      - "8000:8000"  # FastAPI backend dev server (using host port 8001 to avoid conflicts)
+    environment:
+      # Common environment variables
+      - LOGLEVEL=DEBUG
+      - TZ=America/Denver
+      # Client needs to know where the API is (exposed on host port 8001)
+      - VITE_AIARR_URL=http://192.168.0.100:8001/api
+
+      # Backend API Keys and URLs (copy from your existing aiarr-api or aiarr service)
+      - JELLYFIN_URL=http://jellyfin:8096
+      - JELLYFIN_API_KEY=
+      - APP_RECENT_LIMIT=3
+      - GEMINI_API_KEY= # NO DOUBLE QUOTES
+      - GEMINI_MODEL=gemini-2.5-flash-preview-04-17
+      - GEMINI_LIMIT=5
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=
+      - TMDB_API_KEY=
+    networks:
+      - jellyfin_htpc # Ensure this network is defined or external as in your example
+    restart: unless-stopped # Or 'no' for typical dev workflows

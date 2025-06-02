@@ -1,0 +1,42 @@
+# Local build of the development environment using Dockerfile.dev
+
+networks:
+  arr:
+    external: true # Assumes you already have a network named arr 
+
+services:
+  aiarr-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aiarr-dev
+    ports:
+      - "8000:5173"  # Vite frontend dev server
+      - "8001:8000"  # FastAPI backend dev server (using host port 8001 to avoid conflicts)
+    volumes:
+      - ./client/src:/app/client/src 
+      - ./client/public:/app/client/public 
+      - ./client/tailwind.config.js:/app/client/tailwind.config.js
+      - ./server:/app/server   
+      - /app/aiarr-dev/config:/config
+    environment:
+      # Common environment variables
+      - LOGLEVEL=DEBUG
+      - TZ=America/Denver
+      # Client needs to know where the API is (exposed on host port 8001)
+      - VITE_AIARR_URL=http://192.168.0.100:8001/api
+      # Backend API Keys and URLs (copy from your existing aiarr-api or aiarr service)
+      - JELLYFIN_URL=http://jellyfin:8096
+      - JELLYFIN_API_KEY=
+      - APP_RECENT_LIMIT=3
+      - GEMINI_API_KEY= # NO DOUBLE QUOTES
+      - GEMINI_MODEL=gemini-2.5-flash-preview-04-17
+      - GEMINI_LIMIT=5
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=
+      - TMDB_API_KEY=
+    networks:
+      - arr # Ensure this network is defined or external as in your example
+    restart: unless-stopped # Or 'no' for typical dev workflows

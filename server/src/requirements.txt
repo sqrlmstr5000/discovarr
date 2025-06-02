@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+requests
+google-genai
+openai
+APScheduler>=3.10.1
+peewee==3.18.*
+Jinja2
+plexapi

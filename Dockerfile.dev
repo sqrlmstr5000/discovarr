@@ -1,0 +1,52 @@
+# Development build. Uses vite dev server to host client application. Supports hot reloading of both client and server. 
+
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONTRACEMALLOC=1
+
+# Install Node.js (e.g., v18) and npm
+RUN apt-get update && \
+    apt-get install -y curl gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --- Server Setup ---
+# Copy only requirements.txt first to leverage Docker cache
+COPY ./server/src/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy server application code (will be volume-mounted in dev)
+COPY ./server /app/server
+
+# --- Client Setup ---
+# Copy only package.json and lock file first to leverage Docker cache
+WORKDIR /app/client 
+COPY ./client/package.json ./client/package-lock.json* ./
+# npm ci installs from package-lock.json and includes devDependencies by default.
+RUN npm ci
+# The rest of the client code will be volume-mounted in dev,
+# but COPYing it here pre-populates the image layer.
+COPY ./client/ ./
+
+# Expose ports
+# For FastAPI backend dev server
+EXPOSE 8000 
+# For Vite frontend dev server
+EXPOSE 5173 
+
+# Copy the startup script and make it executable
+COPY ./start-dev.sh /app/start-dev.sh
+RUN chmod +x /app/start-dev.sh
+
+# Note: For development, we're running as root for simplicity with volume mounts.
+# The production Dockerfile already handles non-root user setup.
+
+# Command to run the startup script
+CMD ["/app/start-dev.sh"]
