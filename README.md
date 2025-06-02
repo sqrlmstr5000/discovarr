@@ -12,6 +12,18 @@ With AiArr, you can:
 - Schedule automated tasks for syncing history and processing suggestions.
 - View and manage your media library, including active and ignored items.
 
+### Screenshots
+
+<a href=".assets/home_page.png" target="_blank" title="View Home Page Screenshot">
+  <img src=".assets/home_page.png" alt="Home Page" width="200"/>
+</a>
+<a href=".assets/search_page.png" target="_blank" title="View Search Page Screenshot">
+  <img src=".assets/search_page.png" alt="Search Page" width="200"/>
+</a>
+<a href=".assets/settings_page.png" target="_blank" title="View Settings Page Screenshot">
+  <img src=".assets/settings_page.png" alt="Settings Page" width="200"/>
+</a>
+
 ## Key Features
 
 *   **Media Server Integration:**
