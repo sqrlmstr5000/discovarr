@@ -63,6 +63,17 @@ With AiArr, you can:
     *   Track Gemini API token usage for searches.
     *   View watch history grouped by user and date range.
 
+## Prerequisites
+
+- Jellyfin URL and API key
+    - Can use docker container name in the URL if hosted on the same docker network
+- Radarr URL and API key
+    - Can use docker container name in the URL if hosted on the same docker network
+- Sonarr URL and API key
+    - Can use docker container name in the URL if hosted on the same docker network
+- Gemini API key
+- TMDB API key
+
 ## Background
 
 The original intent was to write a script to generate a prompt that gave me recommendations that were not in my media library. After I got that working I decided to turn this into a full application. Code is 75% AI generated with lots of tweaking and polish to make it work well. Overall I'm happy with the result and find it very useful for media discovery and recommendations. Hope you find it useful as well!
