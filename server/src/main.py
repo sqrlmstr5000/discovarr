@@ -352,6 +352,10 @@ async def jellyfin_all(
     # The original endpoint name `jellyfin_get_all_videos_to_string` suggests it returned a string.
     return items # Returning the list of objects/names as per get_items_filtered output
 
+###
+# Gemini
+###
+
 @api_app.get("/gemini/similar_media/search/{search_id}")
 async def gemini_similar_media_by_search(
     search_id: int,
@@ -416,6 +420,22 @@ async def gemini_similar_media_with_prompt(
     except Exception as e:
         logger.error(f"Error processing custom prompt: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+###
+# Ollama
+###
+@api_app.get("/ollama/models")
+async def get_ollama_models(
+    ai_arr: AiArr = Depends(get_ai_arr),
+):
+    """
+    Endpoint to retrieve available Ollama models.
+    """
+    logger.info("Received request to list Ollama models.")
+    models = await ai_arr.ollama_get_models() 
+    if models is None:
+        raise HTTPException(status_code=503, detail="Ollama service unavailable or error fetching models.")
+    return models
 
 @api_app.post("/request/{tmdb_id}")
 async def request_media(

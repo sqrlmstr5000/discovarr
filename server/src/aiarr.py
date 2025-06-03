@@ -12,6 +12,7 @@ from services.jellyfin import Jellyfin
 from services.radarr import Radarr
 from services.sonarr import Sonarr  
 from services.gemini import Gemini
+from services.ollama import Ollama
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import AiArrScheduler
@@ -48,11 +49,11 @@ class AiArr:
         self.test_mode = None
         self.backup_before_upgrade = None
         self.default_prompt = None
-        self.jellyfin_enabled = None # Initialize new setting
+        self.jellyfin_enabled = None 
         self.jellyfin_url = None
-        self.plex_url = None # Initialize new setting
-        self.plex_enabled = None # Initialize new setting
-        self.plex_token = None # Initialize new setting
+        self.plex_url = None 
+        self.plex_enabled = None 
+        self.plex_token = None 
         self.jellyfin_api_key = None
         self.radarr_url = None
         self.radarr_api_key = None
@@ -60,20 +61,26 @@ class AiArr:
         self.sonarr_url = None
         self.sonarr_api_key = None
         self.sonarr_default_quality_profile_id = None
+        self.gemini_enabled = None 
         self.gemini_api_key = None
         self.gemini_model = None
         self.gemini_limit = None
-        self.gemini_thinking_budget = None # Initialize new setting
-        self.gemini_temperature = None # Initialize new setting
+        self.gemini_thinking_budget = None 
+        self.gemini_temperature = None 
+        self.ollama_enabled = None # Initialize Ollama setting
+        self.ollama_base_url = None # Initialize Ollama setting
+        self.ollama_model = None # Initialize Ollama setting
+        self.ollama_temperature = None # 
         self.tmdb_api_key = None
         self.auto_media_save = None
-        self.system_prompt = None # Initialize new setting
+        self.system_prompt = None 
 
         self.plex = None # Initialize Plex service instance
         self.jellyfin = None
         self.radarr = None
         self.sonarr = None
         self.gemini = None
+        self.ollama = None
         self.tmdb = None
         self.jellyfin_user_id = None
 
@@ -113,11 +120,16 @@ class AiArr:
         self.sonarr_url = self.settings.get("sonarr", "url")
         self.sonarr_api_key = self.settings.get("sonarr", "api_key")
         self.sonarr_default_quality_profile_id = self.settings.get("sonarr", "default_quality_profile_id")
+        self.gemini_enabled = self.settings.get("gemini", "enabled") 
         self.gemini_api_key = self.settings.get("gemini", "api_key")
         self.gemini_model = self.settings.get("gemini", "model")
         self.gemini_limit = self.settings.get("gemini", "limit")
         self.gemini_thinking_budget = self.settings.get("gemini", "thinking_budget")
         self.gemini_temperature = self.settings.get("gemini", "temperature")
+        self.ollama_enabled = self.settings.get("ollama", "enabled")
+        self.ollama_base_url = self.settings.get("ollama", "base_url")
+        self.ollama_model = self.settings.get("ollama", "model")
+        self.ollama_temperature = self.settings.get("ollama", "temperature")
         self.tmdb_api_key = self.settings.get("tmdb", "api_key")
         self.system_prompt = self.settings.get("app", "system_prompt")
         
@@ -169,14 +181,23 @@ class AiArr:
             url=self.sonarr_url,
             api_key=self.sonarr_api_key,
         )
-        if self.gemini_api_key:
+        if self.gemini_enabled and self.gemini_api_key:
             self.gemini = Gemini(
-                gemini_model=self.gemini_model, 
                 gemini_api_key=self.gemini_api_key
             )
         else:
             self.gemini = None
             self.logger.info("Gemini API key not configured. Gemini service disabled.")
+
+        if self.ollama_enabled and self.ollama_base_url:
+            self.ollama = Ollama(
+                ollama_base_url=self.ollama_base_url,
+            )
+            self.logger.info("Ollama service initialized.")
+        elif self.ollama_enabled:
+            self.logger.warning("Ollama is enabled but Base URL or Model is missing. Ollama service not initialized.")
+        else:
+            self.logger.info("Ollama integration is disabled.")
 
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
         self.logger.info("AiArr configuration processed and services (re)initialized.")
@@ -202,8 +223,12 @@ class AiArr:
             raise ValueError("Both Radarr URL and API key are required if Radarr URL is provided.")
         if self.sonarr_url and not self.sonarr_api_key:
             raise ValueError("Both Sonarr URL and API key are required if Sonarr URL is provided.")
-        if self.gemini_model and not self.gemini_api_key:
-            raise ValueError("Gemini API key is required if a Gemini model is specified.")
+        if self.gemini_enabled:
+            if self.gemini_api_key:
+                raise ValueError("Gemini API key is required if a Gemini model is specified.")
+        if self.ollama_enabled:
+            if not self.ollama_base_url:
+                raise ValueError("Ollama Base URL is required when Ollama integration is enabled.")
  
     # --- Plex Methods ---
     def plex_get_users(self) -> Optional[List[Dict[str, Any]]]:
@@ -365,7 +390,20 @@ class AiArr:
         if custom_prompt:
             template_string = custom_prompt
         prompt = self.get_prompt(limit=self.gemini_limit, media_name=media_name, template_string=template_string)
-        result = await self.gemini.get_similar_media(prompt=prompt, system_prompt=self.system_prompt, temperature=self.gemini_temperature, thinking_budget=self.gemini_thinking_budget)
+
+        result = None
+        model = None
+        if self.gemini:
+            if not self.gemini_model:
+                raise ValueError("Gemini model is required.")
+            model = self.gemini_model
+            result = await self.gemini.get_similar_media(prompt=prompt, model=model, system_prompt=self.system_prompt, temperature=self.gemini_temperature, thinking_budget=self.gemini_thinking_budget)
+        elif self.ollama:
+            if not self.ollama_model:
+                raise ValueError("Ollama model is required.")
+            model = self.ollama_model
+            result = await self.ollama.get_similar_media(prompt=prompt, model=model, system_prompt=self.system_prompt, temperature=self.ollama_temperature)
+
         if result:
             response = result['response']
             token_counts = result['token_counts']
@@ -373,8 +411,8 @@ class AiArr:
             self.db.add_search_stat(search_id, token_counts)
             self.logger.debug(f"Stored token usage stats for search {search_id}: {token_counts}")
 
-            self.logger.info("Similar Media from Gemini: %s", json.dumps(response, indent=2))
-            for media in response:
+            self.logger.info("Similar Media: %s", json.dumps(response, indent=2))
+            for media in response.get("suggestions"):
                 title = media.get("title")
                 media_type = media.get("mediaType")
 
@@ -473,7 +511,7 @@ class AiArr:
 
             return suggestions
         else:
-            self.logger.error("Failed to retrieve similar media from Gemini.")
+            self.logger.error("Failed to retrieve similar media.")
 
     async def process_watch_history(self) -> Any:
         """
@@ -520,6 +558,24 @@ class AiArr:
         except Exception as e:
             self.logger.error(f"Error retrieving Gemini models from AiArr: {e}", exc_info=True)
             return None
+        
+    async def ollama_get_models(self) -> Optional[List[str]]:
+        """
+        Retrieves the list of available Ollama models.
+
+        Returns:
+            Optional[List[str]]: A list of model names or None if Ollama service is not available or an error occurs.
+        """
+        if not self.ollama:
+            self.logger.warning("Ollama service is not configured. Cannot retrieve models.")
+            return None
+        try:
+            self.logger.info("Fetching available Ollama models.")
+            return await self.ollama.get_models()
+        except Exception as e:
+            self.logger.error(f"Error retrieving Ollama models from AiArr: {e}", exc_info=True)
+            return None
+
 
     def _sync_watch_history_to_db(self, user_name: str, user_id: str, recently_watched_items: Optional[List[Dict[str, Any]]], source: str) -> None:
         """Helper method to filter and add/update watch history items in the database."""

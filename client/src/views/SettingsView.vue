@@ -9,6 +9,8 @@ const loadingRadarrProfiles = ref(false)
 const sonarrQualityProfiles = ref([])
 const loadingSonarrProfiles = ref(false)
 const geminiModels = ref([]);
+const ollamaModels = ref([]);
+const loadingOllamaModels = ref(false);
 const loadingGeminiModels = ref(false);
 const tokenUsageSummary = ref(null)
 const loadingTokenUsage = ref(false)
@@ -71,6 +73,27 @@ const fetchGeminiModels = async () => {
   }
 };
 
+// Load Ollama models
+const fetchOllamaModels = async () => {
+  // Check if Ollama is enabled before fetching models
+  if (!settings.value || !settings.value.ollama || !settings.value.ollama.enabled || !settings.value.ollama.enabled.value) {
+    console.log('Ollama is not enabled. Skipping fetching models.');
+    ollamaModels.value = []; // Ensure models list is empty
+    loadingOllamaModels.value = false;
+    return;
+  }
+  loadingOllamaModels.value = true;
+  try {
+    const response = await fetch(`${config.apiUrl}/ollama/models`);
+    if (!response.ok) throw new Error('Failed to load Ollama models');
+    ollamaModels.value = await response.json();
+  } catch (error) {
+    console.error('Error loading Ollama models:', error);
+    ollamaModels.value = []; // Set to empty array on error
+  } finally {
+    loadingOllamaModels.value = false;
+  }
+};
 // Load Radarr quality profiles
 const fetchRadarrQualityProfiles = async () => {
   loadingRadarrProfiles.value = true;
@@ -109,6 +132,25 @@ const updateSetting = async (group, name) => {
 
   let valueToSave = settings.value[group][name].value;
 
+  // Validation: Prevent enabling both Gemini and Ollama simultaneously
+  if (name === 'enabled' && valueToSave === true) { // Check if trying to enable a setting
+    if (group === 'gemini') {
+      // Trying to enable Gemini, check if Ollama is already enabled
+      if (settings.value.ollama && settings.value.ollama.enabled && settings.value.ollama.enabled.value === true) {
+        toastStore.show('Cannot enable Gemini while Ollama is enabled. Please disable Ollama first.', 'error');
+        settings.value[group][name].value = originalValues[group][name].value; // Revert UI change
+        return;
+      }
+    } else if (group === 'ollama') {
+      // Trying to enable Ollama, check if Gemini is already enabled
+      if (settings.value.gemini && settings.value.gemini.enabled && settings.value.gemini.enabled.value === true) {
+        toastStore.show('Cannot enable Ollama while Gemini is enabled. Please disable Gemini first.', 'error');
+        settings.value[group][name].value = originalValues[group][name].value; // Revert UI change
+        return;
+      }
+    }
+  }
+
   try {
     const response = await fetch(`${config.apiUrl}/settings/${group}/${name}`, {
       method: 'PUT',
@@ -125,14 +167,24 @@ const updateSetting = async (group, name) => {
 
     if (!response.ok) throw new Error('Failed to update setting')
     
+    const successfullyUpdatedValue = settings.value[group][name].value;
     // Update original value after successful save
-    originalValues[group][name].value = settings.value[group][name].value
+    originalValues[group][name].value = successfullyUpdatedValue;
+
+    // If Gemini or Ollama was just enabled, fetch their models
+    if (name === 'enabled' && successfullyUpdatedValue === true) {
+      if (group === 'gemini') {
+        await fetchGeminiModels();
+      } else if (group === 'ollama') {
+        await fetchOllamaModels();
+      }
+    }
     // Optionally, show a success toast here if desired
   } catch (error) {
     console.error('Error updating setting:', error)
     // Revert to original value on error
     settings.value[group][name].value = originalValues[group][name].value
-    toastStore.show(`Failed to update setting ${groupName}.${settingName}: ${error.message}`, 'error');
+    toastStore.show(`Failed to update setting ${group}.${name}: ${error.message}`, 'error');
   }
 }
 
@@ -244,6 +296,7 @@ onMounted(async () => { // Make onMounted async
   fetchRadarrQualityProfiles();
   fetchSonarrQualityProfiles();
   fetchGeminiModels(); // Now this will run after settings are loaded
+  fetchOllamaModels(); // Fetch Ollama models
   updateDatesFromRange(); // Initialize dates based on default selectedRange and fetch
 });
 </script>
@@ -397,6 +450,24 @@ onMounted(async () => { // Make onMounted async
                     {{ loadingGeminiModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
                   </option>
                   <option v-for="modelName in geminiModels" :key="modelName" :value="modelName">
+                    {{ modelName }}
+                  </option>
+                </select>
+              </template>
+
+              <!-- Ollama Model Dropdown -->
+              <template v-else-if="groupName === 'ollama' && settingName === 'model'">
+                <select
+                  :id="groupName + '-' + settingName"
+                  v-model="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  :disabled="loadingOllamaModels"
+                >
+                  <option :value="null">
+                    {{ loadingOllamaModels ? 'Loading models...' : (ollamaModels.length === 0 ? 'No models available (is Ollama enabled?)' : 'Select a model...') }}
+                  </option>
+                  <option v-for="modelName in ollamaModels" :key="modelName" :value="modelName">
                     {{ modelName }}
                   </option>
                 </select>

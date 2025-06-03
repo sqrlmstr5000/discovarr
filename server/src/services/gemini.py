@@ -1,4 +1,3 @@
-import enum
 import json
 import logging
 import sys  
@@ -7,25 +6,14 @@ from pydantic import BaseModel
 import asyncio # For running sync code in async
 from google import genai
 from google.genai import types
-
-class MediaType(enum.Enum):
-    MOVIE = "movie"
-    TV = "tv"
-
-class Suggestion(BaseModel):
-    title: str
-    description: str
-    similarity: str
-    mediaType: MediaType
-    rt_url: str
-    rt_score: int
+from .models import Suggestion, SuggestionList
 
 class Gemini:
     """
     A class to interact with the Gemini API for finding similar media.
     """
 
-    def __init__(self, gemini_model: str, gemini_api_key: str):
+    def __init__(self, gemini_api_key: str):
         """
         Initializes the Gemini class with API configurations.
 
@@ -36,14 +24,12 @@ class Gemini:
         # Setup Logging
         self.logger = logging.getLogger(__name__)
 
-        self.gemini_model = gemini_model
         self.gemini_api_key = gemini_api_key
         self.logger.info("Initializing Gemini class...")
-        self.logger.debug("Using Gemini Model: %s", self.gemini_model)
 
         self.client = genai.Client(api_key=self.gemini_api_key)
 
-    async def get_similar_media(self, prompt: str, system_prompt: Optional[str] = None, thinking_budget: Optional[float] = 0.0, temperature: Optional[float] = 0.7) -> Optional[Dict[str, Any]]:
+    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, thinking_budget: Optional[float] = 0.0, temperature: Optional[float] = 0.7) -> Optional[Dict[str, Any]]:
         """
         Uses the Gemini API to find media similar to the given media name.
 
@@ -62,10 +48,6 @@ class Gemini:
                 - 'token_counts': Dictionary with token usage statistics
                 Or None on error
         """
-        if not self.gemini_model:
-            self.logger.error("Gemini Model is not configured.")
-            return None
-
         if not self.gemini_api_key:
             self.logger.error("Gemini API Key is not configured.")
             return None
@@ -73,14 +55,14 @@ class Gemini:
         try:
             self.logger.debug(f"Using prompt: {prompt}")
 
-            response = await self.client.aio.models.generate_content(model=self.gemini_model,
+            response = await self.client.aio.models.generate_content(model=model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
                     system_instruction=system_prompt,
                     temperature=temperature,
                     response_mime_type="application/json",
-                    response_schema=list[Suggestion]
+                    response_schema=SuggestionList
                 ))
             
             gemini_response = json.loads(response.text)

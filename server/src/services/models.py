@@ -1,17 +1,19 @@
+import enum
 from peewee import *
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any 
+from pydantic import BaseModel, Field
 
 # Peewee
 
 database = SqliteDatabase(None)  # Will be initialized with path later
 
-class BaseModel(Model):
+class PeeweeBaseModel(Model):
     class Meta:
         database = database
 
-class Settings(BaseModel):
+class Settings(PeeweeBaseModel):
     group = CharField(null=False)
     name = CharField(null=False)
     value = CharField(null=True)
@@ -26,14 +28,14 @@ class Settings(BaseModel):
             (('group', 'name'), True),
         )
 
-class Search(BaseModel):
+class Search(PeeweeBaseModel):
     name = CharField(null=False) 
     prompt = TextField(null=False)
     kwargs = CharField(null=True)  # JSON string for dict of kwargs
     last_run_date = DateTimeField(null=True)
     created_at = DateTimeField(default=datetime.now)
 
-class SearchStat(BaseModel):
+class SearchStat(PeeweeBaseModel):
     search = ForeignKeyField(Search, backref='stats', on_delete='CASCADE', null=True)
     prompt_token_count = IntegerField(default=0)
     candidates_token_count = IntegerField(default=0)
@@ -41,7 +43,7 @@ class SearchStat(BaseModel):
     total_token_count = IntegerField(default=0)
     created_at = DateTimeField(default=datetime.now)
 
-class Media(BaseModel):
+class Media(PeeweeBaseModel):
     title = CharField(null=False)
     source_title = CharField(null=True)
     description = TextField(null=True)
@@ -61,7 +63,7 @@ class Media(BaseModel):
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
-class WatchHistory(BaseModel):
+class WatchHistory(PeeweeBaseModel):
     title = CharField(null=False)
     id = CharField(null=False)
     media_type = CharField(null=False)
@@ -72,7 +74,7 @@ class WatchHistory(BaseModel):
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
-class Schedule(BaseModel):
+class Schedule(PeeweeBaseModel):
     search = ForeignKeyField(Search, backref='schedules', null=True)
     job_id = TextField(unique=True)
     func_name = TextField()
@@ -88,7 +90,7 @@ class Schedule(BaseModel):
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
-class Migrations(BaseModel):
+class Migrations(PeeweeBaseModel):
     version = IntegerField()
     applied_at = DateTimeField(default=datetime.now)
 
@@ -108,3 +110,19 @@ class ItemsFiltered:
     last_played_date: Optional[str] # ISO 8601 str
     play_count: Optional[int] = None  
     is_favorite: Optional[bool] = None  
+
+class MediaType(enum.Enum):
+    MOVIE = "movie"
+    TV = "tv"
+
+@dataclass
+class Suggestion(BaseModel):
+    title: str = Field(description="The title of the media.")
+    description: str = Field(description="Description of the media.")
+    similarity: str = Field(description="A short summary of how this media relates to the request.")
+    mediaType: MediaType
+    rt_url: str = Field(description="Full Rotten Tomatoes URL for the media.")
+    rt_score: int = Field(description="Rotten Tomatoes Score for the media.")
+
+class SuggestionList(BaseModel):
+    suggestions: List[Suggestion]
