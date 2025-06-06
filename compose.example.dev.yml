@@ -28,10 +28,8 @@ services:
       # Backend API Keys and URLs (copy from your existing aiarr-api or aiarr service)
       - JELLYFIN_URL=http://jellyfin:8096
       - JELLYFIN_API_KEY=
-      - APP_RECENT_LIMIT=3
       - GEMINI_API_KEY= # NO DOUBLE QUOTES
       - GEMINI_MODEL=gemini-2.5-flash-preview-04-17
-      - GEMINI_LIMIT=5
       - RADARR_URL=http://radarr:7878
       - RADARR_API_KEY=
       - SONARR_URL=http://sonarr:8989

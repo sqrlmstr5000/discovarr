@@ -29,6 +29,7 @@ class SettingsService:
         "app": {
             "default_prompt": {"value": DEFAULT_PROMPT, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
             "recent_limit": {"value": 10, "type": SettingType.INTEGER, "description": "Number of recent items to fetch"},
+            "suggestion_limit": {"value": 20, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
             "test_mode": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing when requesting media from Radarr and Sonarr to False. This won't download anything just add the media."},
             "backup_before_upgrade": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically backup the database before running migrations/upgrades."},
             "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the AiArr Media table"},
@@ -58,7 +59,6 @@ class SettingsService:
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key"},
             "model": {"value": None, "type": SettingType.STRING, "description": "Gemini model name"},
-            "limit": {"value": 10, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
             "thinking_budget": {"value": 1024, "type": SettingType.FLOAT, "description": "Gemini thinking budget controls the computational budget the model uses for internal thought processes. Setting it to 0 can disable explicit thinking steps, potentially leading to faster but less 'reasoned' responses for complex tasks. If you set a value under 1024 tokens, the API will actually reset it to 1024 tokens if thinking is still enabled. So, effectively, the lowest non-zero thinking budget is 1024 tokens. The maximum thinking_budget you can set is 24,576 tokens."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Higher values mean more random. Values typically range from 0.0 to 2.0"},
         },

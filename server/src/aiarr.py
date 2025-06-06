@@ -46,6 +46,7 @@ class AiArr:
         # Initialize attributes to None or default before first load
         # This helps with type hinting and ensures attributes exist
         self.recent_limit = None
+        self.suggestion_limit = None
         self.test_mode = None
         self.backup_before_upgrade = None
         self.default_prompt = None
@@ -64,7 +65,6 @@ class AiArr:
         self.gemini_enabled = None 
         self.gemini_api_key = None
         self.gemini_model = None
-        self.gemini_limit = None
         self.gemini_thinking_budget = None 
         self.gemini_temperature = None 
         self.ollama_enabled = None # Initialize Ollama setting
@@ -104,6 +104,7 @@ class AiArr:
 
         # Load configuration values from SettingsService
         self.recent_limit = self.settings.get("app", "recent_limit")
+        self.suggestion_limit = self.settings.get("app", "suggestion_limit")
         self.test_mode = self.settings.get("app", "test_mode")
         self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
         self.default_prompt = self.settings.get("app", "default_prompt")
@@ -123,7 +124,6 @@ class AiArr:
         self.gemini_enabled = self.settings.get("gemini", "enabled") 
         self.gemini_api_key = self.settings.get("gemini", "api_key")
         self.gemini_model = self.settings.get("gemini", "model")
-        self.gemini_limit = self.settings.get("gemini", "limit")
         self.gemini_thinking_budget = self.settings.get("gemini", "thinking_budget")
         self.gemini_temperature = self.settings.get("gemini", "temperature")
         self.ollama_enabled = self.settings.get("ollama", "enabled")
@@ -389,7 +389,7 @@ class AiArr:
         template_string = self.default_prompt
         if custom_prompt:
             template_string = custom_prompt
-        prompt = self.get_prompt(limit=self.gemini_limit, media_name=media_name, template_string=template_string)
+        prompt = self.get_prompt(limit=self.suggestion_limit, media_name=media_name, template_string=template_string)
 
         result = None
         model = None

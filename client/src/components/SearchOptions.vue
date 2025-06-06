@@ -15,7 +15,7 @@ const emit = defineEmits([
 ]);
 
 const settingsStore = useSettingsStore();
-const currentLimit = computed(() => settingsStore.getSettingValue("gemini", "limit"));
+const currentLimit = computed(() => settingsStore.getSettingValue("app", "suggestion_limit"));
 const jellyfinUsers = ref([]);
 
 // Use computed properties for v-model to ensure reactivity with parent

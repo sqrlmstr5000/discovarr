@@ -118,65 +118,46 @@ services:
       - VITE_AIARR_URL=http://192.168.0.100:8000/api
 ```
 
-### Advanced
-```yaml
-# networks:
-#   your_custom_network:
-#     driver: bridge
-#     external: true
+### Environment Variables
+```
+- LOGLEVEL=INFO # DEBUG, INFO, WARNING, ERROR, CRITICAL
+- APP_DEFAULT_PROMPT="Your custom default prompt here"
+- APP_RECENT_LIMIT=10
+- APP_SUGGESTION_LIMIT=10
+- APP_TEST_MODE=False
+- APP_BACKUP_BEFORE_UPGRADE=True
+- APP_AUTO_MEDIA_SAVE=True
+- APP_SYSTEM_PROMPT="Your custom system prompt for Gemini"
 
-services:
-  aiarr:
-    image: ghcr.io/tsquillario/aiarr:latest # Replace with your actual image name and tag
-    container_name: aiarr
-    restart: unless-stopped
-    ports:
-      - "8000:8000" # Exposes the FastAPI backend (adjust if your app runs on a different port)
-    volumes:
-      - ./aiarr_config:/config   # For aiarr.db and other configuration files
-      - ./aiarr_backups:/backups # For database backups
-    environment:
-      # --- Application Settings ---
-      - LOGLEVEL=INFO # DEBUG, INFO, WARNING, ERROR, CRITICAL
-      # - APP_DEFAULT_PROMPT="Your custom default prompt here"
-      # - APP_RECENT_LIMIT=10
-      # - APP_TEST_MODE=False
-      # - APP_BACKUP_BEFORE_UPGRADE=True
-      # - APP_AUTO_MEDIA_SAVE=True
-      # - APP_SYSTEM_PROMPT="Your custom system prompt for Gemini"
+# Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
+- VITE_AIARR_URL=http://192.168.0.100:8000/api
 
-      # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
-      - VITE_AIARR_URL=http://192.168.0.100:8000/api
+# --- Jellyfin Settings ---
+- JELLYFIN_ENABLED=True # Set to True if using Jellyfin
+- JELLYFIN_URL=http://jellyfin:8096
+- JELLYFIN_API_KEY=your_jellyfin_api_key
 
-      # --- Jellyfin Settings (Optional) ---
-      - JELLYFIN_ENABLED=True # Set to True if using Jellyfin
-      - JELLYFIN_URL=http://jellyfin:8096
-      - JELLYFIN_API_KEY=your_jellyfin_api_key
+# --- Plex Settings ---
+- PLEX_ENABLED=True # Set to True if using Plex
+- PLEX_URL=http://plex:32400
+- PLEX_API_TOKEN=your_plex_token
 
-      # --- Plex Settings (Optional) ---
-      # - PLEX_ENABLED=True # Set to True if using Plex
-      # - PLEX_URL=http://plex:32400
-      # - PLEX_API_TOKEN=your_plex_token
+# --- Radarr Settings ---
+- RADARR_URL=http://radarr:7878
+- RADARR_API_KEY=your_radarr_api_key
+- RADARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
 
-      # --- Radarr Settings ---
-      - RADARR_URL=http://radarr:7878
-      - RADARR_API_KEY=your_radarr_api_key
-      # - RADARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
+# --- Sonarr Settings ---
+- SONARR_URL=http://sonarr:8989
+- SONARR_API_KEY=your_sonarr_api_key
+- SONARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
 
-      # --- Sonarr Settings ---
-      - SONARR_URL=http://sonarr:8989
-      - SONARR_API_KEY=your_sonarr_api_key
-      # - SONARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
+# --- Gemini AI Settings ---
+- GEMINI_API_KEY=your_gemini_api_key
+- GEMINI_MODEL=gemini-pro # Or your preferred Gemini model
+- GEMINI_THINKING_BUDGET=1024
+- GEMINI_TEMPERATURE=0.7
 
-      # --- Gemini AI Settings ---
-      - GEMINI_API_KEY=your_gemini_api_key
-      # - GEMINI_MODEL=gemini-pro # Or your preferred Gemini model
-      # - GEMINI_LIMIT=5
-      # - GEMINI_THINKING_BUDGET=1024
-      # - GEMINI_TEMPERATURE=0.7
-
-      # --- TMDB Settings ---
-      - TMDB_API_KEY=your_tmdb_api_key
-    # networks:
-    #   - your_custom_network # Optional: if you use custom Docker networks
+# --- TMDB Settings ---
+- TMDB_API_KEY=your_tmdb_api_key
 ```

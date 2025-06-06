@@ -21,7 +21,7 @@ import { useToastStore } from '@/stores/toast';
 const toastStore = useToastStore();
 
 // Access a specific setting's value directly
-const currentLimit = computed(() => settingsStore.getSettingValue("gemini", "limit"));
+const currentLimit = computed(() => settingsStore.getSettingValue("app", "suggestion_limit"));
 const currentDefaultPrompt = computed(() => settingsStore.getSettingValue("app", "default_prompt"));
 
 const props = defineProps({
