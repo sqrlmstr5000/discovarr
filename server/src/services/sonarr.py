@@ -5,7 +5,7 @@ from .response import APIResponse # Import the APIResponse class
 from .api import Api # Import the new Api class
 
 class Sonarr(Api):
-    def __init__(self, url: str, api_key: str):
+    def __init__(self, url: str, api_key: str, root_dir_path: str):
         """Initialize Sonarr client.
         
         Args:
@@ -14,6 +14,7 @@ class Sonarr(Api):
         """
         super().__init__(url=url, api_key=api_key, api_key_header_name="X-Api-Key", api_base_path="api/v3")
         self.logger = logging.getLogger(__name__)
+        self._root_dir_path = root_dir_path
         # self.url, self.api_key, and self.headers are now managed by the Api base class
 
     def lookup_series(self, tmdb_id: str) -> APIResponse:
@@ -50,7 +51,7 @@ class Sonarr(Api):
         api_response.data = api_response.data[0]
         return api_response
 
-    def add_series(self, tmdb_id: str, quality_profile_id: int, root_dir_path: str = "/tv", 
+    def add_series(self, tmdb_id: str, quality_profile_id: int, 
                   language_profile_id: int = 1, season_folder: bool = True, 
                   monitor: bool = True, search_for_missing: bool = True) -> APIResponse:
         """Add a series to Sonarr using IMDB ID.
@@ -79,7 +80,7 @@ class Sonarr(Api):
             "title": series_data["title"],
             "tmdbId": tmdb_id,
             "qualityProfileId": quality_profile_id,
-            "rootFolderPath": root_dir_path,
+            "rootFolderPath": self._root_dir_path,
             "languageProfileId": language_profile_id,
             "seasonFolder": season_folder,
             "monitored": monitor,

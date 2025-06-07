@@ -58,9 +58,11 @@ class AiArr:
         self.radarr_url = None
         self.radarr_api_key = None
         self.radarr_default_quality_profile_id = None
+        self.radarr_movies_path = None
         self.sonarr_url = None
         self.sonarr_api_key = None
         self.sonarr_default_quality_profile_id = None
+        self.sonarr_tvshows_path = None
         self.gemini_enabled = None 
         self.gemini_api_key = None
         self.gemini_model = None
@@ -117,9 +119,11 @@ class AiArr:
         self.radarr_url = self.settings.get("radarr", "url")
         self.radarr_api_key = self.settings.get("radarr", "api_key")
         self.radarr_default_quality_profile_id = self.settings.get("radarr", "default_quality_profile_id")
+        self.radarr_movies_path = self.settings.get("radarr", "movies_path")
         self.sonarr_url = self.settings.get("sonarr", "url")
         self.sonarr_api_key = self.settings.get("sonarr", "api_key")
         self.sonarr_default_quality_profile_id = self.settings.get("sonarr", "default_quality_profile_id")
+        self.sonarr_tvshows_path = self.settings.get("sonarr", "tvshows_path")
         self.gemini_enabled = self.settings.get("gemini", "enabled") 
         self.gemini_api_key = self.settings.get("gemini", "api_key")
         self.gemini_model = self.settings.get("gemini", "model")
@@ -176,10 +180,12 @@ class AiArr:
         self.radarr = Radarr(
             url=self.radarr_url,
             api_key=self.radarr_api_key,
+            root_dir_path=self.radarr_movies_path,
         )
         self.sonarr = Sonarr(
             url=self.sonarr_url,
             api_key=self.sonarr_api_key,
+            root_dir_path=self.sonarr_tvshows_path,
         )
         if self.gemini_enabled and self.gemini_api_key:
             self.gemini = Gemini(

@@ -48,11 +48,13 @@ class SettingsService:
             "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key"},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
+            "movies_path": {"value": "/movies", "type": SettingType.STRING, "description": "Radarr downloads path"},
         },
         "sonarr": {
             "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key"},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
+            "tvshows_path": {"value": "/tv", "type": SettingType.STRING, "description": "Sonarr downloads path"},
         },
         "gemini": {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},

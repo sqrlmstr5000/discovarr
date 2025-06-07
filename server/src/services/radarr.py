@@ -5,7 +5,7 @@ from .response import APIResponse # Import the APIResponse class
 from .api import Api # Import the new Api class
 
 class Radarr(Api):
-    def __init__(self, url: str, api_key: str):
+    def __init__(self, url: str, api_key: str, root_dir_path: str):
         """Initialize Radarr client.
         
         Args:
@@ -14,6 +14,7 @@ class Radarr(Api):
         """
         super().__init__(url=url, api_key=api_key, api_key_header_name="X-Api-Key", api_base_path="api/v3")
         self.logger = logging.getLogger(__name__)
+        self._root_dir_path = root_dir_path
         # self.url, self.api_key, and self.headers are now managed by the Api base class
 
     def get_quality_profiles(self, default_profile_id: Optional[int] = None) -> APIResponse:
@@ -83,7 +84,7 @@ class Radarr(Api):
         
         return api_response
 
-    def add_movie(self, tmdb_id: int, quality_profile_id: int, root_dir_path: str = "/movies", 
+    def add_movie(self, tmdb_id: int, quality_profile_id: int, 
                  monitor: bool = True, search_for_movie: bool = True) -> APIResponse:
         """Add a movie to Radarr using TMDb ID.
         
@@ -107,7 +108,7 @@ class Radarr(Api):
         data = {
             **movie_info,  # Include all movie details from lookup
             "qualityProfileId": quality_profile_id,
-            "rootFolderPath": root_dir_path,
+            "rootFolderPath": self._root_dir_path,
             "monitored": monitor,
             "addOptions": {
                 "searchForMovie": search_for_movie,
