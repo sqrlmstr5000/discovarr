@@ -105,7 +105,7 @@ This example `docker-compose.yml` demonstrates a basic setup for AiArr. You'll n
 ```yaml
 services:
   aiarr:
-    image: ghcr.io/tsquillario/aiarr:latest 
+    image: ghcr.io/sqrlmstr5000/aiarr:latest 
     container_name: aiarr
     restart: unless-stopped
     ports:
@@ -127,7 +127,7 @@ services:
 
 services:
   aiarr:
-    image: ghcr.io/tsquillario/aiarr:latest # Replace with your actual image name and tag
+    image: ghcr.io/sqrlmstr5000/aiarr:latest # Replace with your actual image name and tag
     container_name: aiarr
     restart: unless-stopped
     ports:
