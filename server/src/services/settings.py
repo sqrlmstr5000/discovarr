@@ -2,19 +2,11 @@ import logging
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
-from enum import Enum
 from urllib.parse import urlparse
-from services.models import Settings
+from .models import Settings, SettingType # Import SettingType from models
 
 if TYPE_CHECKING:
     from ..aiarr import AiArr # For type hinting AiArr instance
-
-class SettingType(str, Enum):
-    STRING = "STRING"
-    INTEGER = "INTEGER" 
-    BOOLEAN = "BOOLEAN"
-    URL = "URL"
-    FLOAT = "FLOAT"
 
 class SettingsService:
     """
@@ -24,10 +16,10 @@ class SettingsService:
     """
     
     # Default settings by group with types and validation
-    DEFAULT_PROMPT = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{media_exclude}}"
-    DEFAULT_SETTINGS = {
+    _DEFAULT_PROMPT_TEMPLATE = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{media_exclude}}"
+    _BASE_DEFAULT_SETTINGS = {
         "app": {
-            "default_prompt": {"value": DEFAULT_PROMPT, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
+            "default_prompt": {"value": _DEFAULT_PROMPT_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
             "recent_limit": {"value": 10, "type": SettingType.INTEGER, "description": "Number of recent items to fetch"},
             "suggestion_limit": {"value": 20, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
             "test_mode": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing when requesting media from Radarr and Sonarr to False. This won't download anything just add the media."},
@@ -55,29 +47,20 @@ class SettingsService:
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key"},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
         },
-        "gemini": {
-            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key"},
-            "model": {"value": None, "type": SettingType.STRING, "description": "Gemini model name"},
-            "thinking_budget": {"value": 1024, "type": SettingType.FLOAT, "description": "Gemini thinking budget controls the computational budget the model uses for internal thought processes. Setting it to 0 can disable explicit thinking steps, potentially leading to faster but less 'reasoned' responses for complex tasks. If you set a value under 1024 tokens, the API will actually reset it to 1024 tokens if thinking is still enabled. So, effectively, the lowest non-zero thinking budget is 1024 tokens. The maximum thinking_budget you can set is 24,576 tokens."},
-            "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Higher values mean more random. Values typically range from 0.0 to 2.0"},
-        },
-        "ollama": {
-            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Ollama integration."},
-            "base_url": {"value": "http://localhost:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434)."},
-            "model": {"value": None, "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
-            "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
-        },
         "tmdb": {
             "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API key"},
         },
         
     }
+    # DEFAULT_SETTINGS will be populated by _build_default_settings_if_needed
+    # This ensures LLM provider defaults are loaded dynamically.
+    DEFAULT_SETTINGS: Dict[str, Dict[str, Any]] = {}
 
     def __init__(self, aiarr_app: Optional['AiArr'] = None):
         """Initialize the settings service."""
         self.logger = logging.getLogger(__name__)
         self.aiarr_app = aiarr_app
+        SettingsService._build_default_settings_if_needed()
         self._initialize_settings()
 
     def _validate_value(self, value: Any, setting_type: SettingType) -> bool:
@@ -118,6 +101,40 @@ class SettingsService:
             return float(value)
         return value
 
+    @staticmethod
+    def _build_default_settings_if_needed():
+        """
+        Builds the complete DEFAULT_SETTINGS dictionary by combining base settings
+        with settings from LLM providers. This method is idempotent.
+        """
+        if SettingsService.DEFAULT_SETTINGS:  # Already built
+            return
+
+        # Delayed imports to prevent circular dependencies at module load time
+        from .gemini import Gemini
+        from .ollama import Ollama
+        # Add other LLMProviderBase implementations here
+        # from .openai import OpenAi # Example if OpenAi becomes a provider
+
+        llm_provider_classes = [Gemini, Ollama] 
+
+        current_default_settings = SettingsService._BASE_DEFAULT_SETTINGS.copy()
+        for provider_class in llm_provider_classes:
+            if not hasattr(provider_class, 'PROVIDER_NAME') or not hasattr(provider_class, 'get_default_settings'):
+                logging.getLogger(__name__).error(
+                    f"Provider class {provider_class.__name__} does not fully implement LLMProviderBase (missing PROVIDER_NAME or get_default_settings)."
+                )
+                continue
+            
+            provider_name = provider_class.PROVIDER_NAME
+            provider_defaults = provider_class.get_default_settings()
+            if provider_name in current_default_settings:
+                logging.getLogger(__name__).warning(f"Provider '{provider_name}' defaults key already exists in base settings. Overwriting.")
+            current_default_settings[provider_name] = provider_defaults
+            logging.getLogger(__name__).info(f"Loaded default settings for LLM provider: {provider_name}")
+        
+        SettingsService.DEFAULT_SETTINGS = current_default_settings
+
     def _initialize_settings(self) -> None:
         """
         Create settings in database if they don't exist.
@@ -126,7 +143,7 @@ class SettingsService:
         """
         import os
 
-        for group, settings in self.DEFAULT_SETTINGS.items():
+        for group, settings in SettingsService.DEFAULT_SETTINGS.items():
             for name, config in settings.items():
                 # Check environment variable first (e.g. JELLYFIN_URL for jellyfin.url)
                 env_var = f"{group.upper()}_{name.upper()}"
@@ -154,11 +171,11 @@ class SettingsService:
         """Get a setting value with proper type conversion."""
         try:
             # First check if the setting exists in our defaults
-            if group not in self.DEFAULT_SETTINGS or name not in self.DEFAULT_SETTINGS[group]:
+            if group not in SettingsService.DEFAULT_SETTINGS or name not in SettingsService.DEFAULT_SETTINGS[group]:
                 self.logger.warning(f"No default configuration for setting {group}.{name}")
                 return None
 
-            setting_config = self.DEFAULT_SETTINGS[group][name]
+            setting_config = SettingsService.DEFAULT_SETTINGS[group][name]
             setting_type = setting_config["type"]
 
             # Try to get value from database
@@ -227,7 +244,7 @@ class SettingsService:
         }
         
         # Build result using DEFAULT_SETTINGS as template
-        for group, group_settings in self.DEFAULT_SETTINGS.items():
+        for group, group_settings in SettingsService.DEFAULT_SETTINGS.items():
             if group not in result:
                 result[group] = {}
             for name, config in group_settings.items():
@@ -247,10 +264,10 @@ class SettingsService:
 
     def get_settings_by_group(self, group: str) -> Dict[str, Any]:
         """Get all settings in a group."""
-        if group not in self.DEFAULT_SETTINGS:
+        if group not in SettingsService.DEFAULT_SETTINGS:
             return {}
             
         result = {}
-        for name in self.DEFAULT_SETTINGS[group]:
+        for name in SettingsService.DEFAULT_SETTINGS[group]:
             result[name] = self.get(group, name)
         return result

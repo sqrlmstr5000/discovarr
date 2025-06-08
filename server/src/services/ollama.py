@@ -6,13 +6,15 @@ from typing import Optional, Dict, Any, List
 import ollama # Official Ollama client
 
 from .models import Suggestion, SuggestionList, MediaType
+from .llm_provider_base import LLMProviderBase
+from .models import SettingType # Import SettingType from models
 
-class Ollama:
+class Ollama(LLMProviderBase):
     """
     A class to interact with the Ollama API for finding similar media and listing models.
     """
-
-    def __init__(self, ollama_base_url: str):
+    PROVIDER_NAME = "ollama"
+    def __init__(self, ollama_base_url: str, **kwargs: Any): # Added **kwargs for future flexibility
         """
         Initializes the Ollama class with API configurations.
 
@@ -35,13 +37,21 @@ class Ollama:
             self.logger.error(f"Failed to initialize Ollama client: {e}")
             self.client = None
 
-    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7) -> Optional[Dict[str, Any]]:
+    @property
+    def name(self) -> str:
+        """Returns the name of the LLM provider."""
+        return self.PROVIDER_NAME
+
+    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
         """
         Uses the Ollama API to find media similar to the user's prompt, returning structured JSON.
 
         Args:
+            model (str): The Ollama model to use.
             prompt (str): The user's request/prompt.
             system_prompt (Optional[str]): Base system instructions for the AI.
+            temperature (Optional[float]): Controls randomness. Higher is more random.
+            **kwargs: Additional provider-specific parameters (ignored by Ollama for this method).
             temperature (Optional[float]): Controls randomness. Higher is more random.
 
         Returns:
@@ -53,6 +63,10 @@ class Ollama:
         if not self.client:
             self.logger.error("Ollama client is not initialized.")
             return None
+
+        # Ollama chat endpoint usually expects a system message.
+        if system_prompt is None:
+            system_prompt = "You are a helpful assistant."
 
         messages = [
             {'role': 'system', 'content': system_prompt},
@@ -107,3 +121,16 @@ class Ollama:
         except Exception as e:
             self.logger.exception(f"Error listing Ollama models: {e}")
             return None
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the Ollama provider.
+        These should align with SettingsService.DEFAULT_SETTINGS for 'ollama'.
+        """
+        return {
+            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Ollama integration."},
+            "base_url": {"value": "http://localhost:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434)."},
+            "model": {"value": "llama3", "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
+            "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
+        }

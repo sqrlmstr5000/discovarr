@@ -1,13 +1,19 @@
 import enum
 from peewee import *
 from datetime import datetime
-from dataclasses import dataclass
 from typing import Optional, Dict, List, Any 
 from pydantic import BaseModel, Field
 
 # Peewee
 
 database = SqliteDatabase(None)  # Will be initialized with path later
+
+class SettingType(str, enum.Enum):
+    STRING = "STRING"
+    INTEGER = "INTEGER" 
+    BOOLEAN = "BOOLEAN"
+    URL = "URL"
+    FLOAT = "FLOAT"
 
 class PeeweeBaseModel(Model):
     class Meta:
@@ -101,8 +107,7 @@ MODELS = [Media, WatchHistory, Search, SearchStat, Schedule, Migrations, Setting
 
 # Application Models
 
-@dataclass
-class ItemsFiltered:
+class ItemsFiltered(BaseModel):
     """Represents a filtered recently watched media item."""
     name: str
     id: Optional[str]
@@ -110,12 +115,11 @@ class ItemsFiltered:
     last_played_date: Optional[str] # ISO 8601 str
     play_count: Optional[int] = None  
     is_favorite: Optional[bool] = None  
-
+    
 class MediaType(enum.Enum):
     MOVIE = "movie"
     TV = "tv"
 
-@dataclass
 class Suggestion(BaseModel):
     title: str = Field(description="The title of the media.")
     description: str = Field(description="Description of the media.")

@@ -7,12 +7,14 @@ import asyncio # For running sync code in async
 from google import genai
 from google.genai import types
 from .models import Suggestion, SuggestionList
+from .llm_provider_base import LLMProviderBase
+from .models import SettingType # Import SettingType from models
 
-class Gemini:
+class Gemini(LLMProviderBase):
     """
     A class to interact with the Gemini API for finding similar media.
     """
-
+    PROVIDER_NAME = "gemini"
     def __init__(self, gemini_api_key: str):
         """
         Initializes the Gemini class with API configurations.
@@ -29,7 +31,12 @@ class Gemini:
 
         self.client = genai.Client(api_key=self.gemini_api_key)
 
-    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, thinking_budget: Optional[float] = 0.0, temperature: Optional[float] = 0.7) -> Optional[Dict[str, Any]]:
+    @property
+    def name(self) -> str:
+        """Returns the name of the LLM provider."""
+        return self.PROVIDER_NAME
+
+    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
         """
         Uses the Gemini API to find media similar to the given media name.
 
@@ -37,10 +44,12 @@ class Gemini:
         https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits
 
         Args:
-            media_name (str): The name of the movie or TV show.
-            media_exclude (str): Media titles to exclude from recommendations
-            limit (str): Number of recommendations to request
-            custom_prompt (Optional[str]): Optional custom prompt to use
+            model (str): The Gemini model to use.
+            prompt (str): The user's prompt for suggestions.
+            system_prompt (Optional[str]): System instructions for the LLM.
+            temperature (Optional[float]): Controls randomness.
+            **kwargs: Additional provider-specific parameters.
+                      Expected: 'thinking_budget' (Optional[float]).
 
         Returns:
             Optional[Dict[str, Any]]: A dictionary containing:
@@ -51,6 +60,8 @@ class Gemini:
         if not self.gemini_api_key:
             self.logger.error("Gemini API Key is not configured.")
             return None
+        
+        thinking_budget = kwargs.get('thinking_budget', 0.0)
 
         try:
             self.logger.debug(f"Using prompt: {prompt}")
@@ -123,3 +134,21 @@ class Gemini:
         except Exception as e:
             self.logger.exception(f"Error listing Gemini models: {e}")
             return None
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the Gemini provider.
+        These should align with SettingsService.DEFAULT_SETTINGS for 'gemini'.
+        """
+        return {
+            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key"},
+            "model": {"value": "gemini-1.5-flash-latest", "type": SettingType.STRING, "description": "Gemini model name (e.g., gemini-1.5-flash-latest, gemini-1.5-pro-latest)."},
+            "thinking_budget": {"value": 1024.0, "type": SettingType.FLOAT, "description": "Gemini thinking budget (0 to disable, min 1024 if enabled, max 24576)."},
+            "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Values typically range from 0.0 to 2.0."},
+        }
+
+    # Example of a helper for provider-specific kwargs, though not strictly required by base
+    # def _get_thinking_budget_from_kwargs(self, **kwargs: Any) -> Optional[float]:
+    #     return kwargs.get('thinking_budget')

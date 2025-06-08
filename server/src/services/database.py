@@ -152,7 +152,7 @@ class Database:
     def _add_default_tasks(self):
         # Add default search if it doesn't exist
         self.add_search(
-            prompt=SettingsService.DEFAULT_PROMPT, # Use DEFAULT_PROMPT from SettingsService
+            prompt=SettingsService._DEFAULT_PROMPT_TEMPLATE, # Use _DEFAULT_PROMPT_TEMPLATE
             name="recently_watched",
             id=1)
         
@@ -284,7 +284,7 @@ class Database:
             # Check if an entry already exists for this media_jellyfin_id and user.
             # This requires WatchHistory model to have 'media_jellyfin_id' and 'media_type' fields.
             existing_entry = WatchHistory.get_or_none(
-                (WatchHistory.id == id) &
+                (WatchHistory.title == title) &
                 (WatchHistory.watched_by == watched_by)
             )
 
