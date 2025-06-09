@@ -15,33 +15,33 @@ from services.gemini import Gemini
 from services.ollama import Ollama
 from services.tmdb import TMDB
 from services.database import Database
-from services.scheduler import AiArrScheduler
+from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
 from services.plex import Plex
 from services.models import ItemsFiltered
 
-class AiArr:
+class Discovarr:
     """
-    A class to interact with Jellyseerr, Jellyfin, and Gemini APIs for media requests and management.
+    A class to interact with media servers and LLM APIs for media requests and management.
     """
 
     def __init__(self): 
         """
-        Initializes the AiArr class and sets up logging and API configurations.
+        Initializes the Discovarr class and sets up logging and API configurations.
         """
         
         self.logger = logging.getLogger(__name__)
-        self.logger.info("Initializing AiArr class...")
+        self.logger.info("Initializing Discovarr class...")
 
         # Log current system time and timezone
         now = datetime.now()
         local_tz = now.astimezone().tzinfo
         self.logger.info(f"Current system time: {now.strftime('%Y-%m-%d %H:%M:%S')} Timezone: {local_tz}")
 
-        self.db = Database("/config/aiarr.db")
-        # Pass self (AiArr instance) to SettingsService for callback
-        self.settings = SettingsService(aiarr_app=self)
+        self.db = Database("/config/discovarr.db")
+        # Pass self (Discovarr instance) to SettingsService for callback
+        self.settings = SettingsService(discovarr_app=self)
 
         # Initialize attributes to None or default before first load
         # This helps with type hinting and ensures attributes exist
@@ -87,7 +87,7 @@ class AiArr:
         # Load backup setting first as it's needed for Database initialization
         self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
         # Initialize Database with the backup setting
-        self.db = Database("/config/aiarr.db", backup_on_upgrade=self.backup_before_upgrade)
+        self.db = Database("/config/discovarr.db", backup_on_upgrade=self.backup_before_upgrade)
         # Load the rest of the configuration and (re)initialize other services
         try:
             self.reload_configuration()
@@ -95,14 +95,14 @@ class AiArr:
             self.logger.critical(f"Fatal configuration error during startup: {e}. Exiting.")
             sys.exit(1)
 
-        # Initialize scheduler (depends on a fully configured AiArr instance)
-        self.scheduler = AiArrScheduler(db=self.db, aiarr_instance=self)
+        # Initialize scheduler (depends on a fully configured Discovarr instance)
+        self.scheduler = DiscovarrScheduler(db=self.db, discovarr_instance=self)
         self.logger.info("Scheduler initialized")
     def reload_configuration(self) -> None:
         """Loads/reloads configuration from settings and (re)initializes services."""
-        self.logger.info("Loading/Reloading AiArr configuration...")
+        self.logger.info("Loading/Reloading Discovarr configuration...")
 
-        # Load configuration values from SettingsService
+        # Load configuration values from SettingsService_
         self.recent_limit = self.settings.get("app", "recent_limit")
         self.suggestion_limit = self.settings.get("app", "suggestion_limit")
         self.test_mode = self.settings.get("app", "test_mode")
@@ -200,7 +200,7 @@ class AiArr:
             self.logger.info("Ollama integration is disabled.")
 
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
-        self.logger.info("AiArr configuration processed and services (re)initialized.")
+        self.logger.info("Discovarr configuration processed and services (re)initialized.")
 
     def _validate_configuration(self) -> None:
         """
@@ -556,7 +556,7 @@ class AiArr:
             self.logger.info("Fetching available Gemini models.")
             return await self.gemini.get_models()
         except Exception as e:
-            self.logger.error(f"Error retrieving Gemini models from AiArr: {e}", exc_info=True)
+            self.logger.error(f"Error retrieving Gemini models from Discovarr: {e}", exc_info=True)
             return None
         
     async def ollama_get_models(self) -> Optional[List[str]]:
@@ -573,7 +573,7 @@ class AiArr:
             self.logger.info("Fetching available Ollama models.")
             return await self.ollama.get_models()
         except Exception as e:
-            self.logger.error(f"Error retrieving Ollama models from AiArr: {e}", exc_info=True)
+            self.logger.error(f"Error retrieving Ollama models from Discovarr: {e}", exc_info=True)
             return None
 
 
@@ -941,7 +941,7 @@ class AiArr:
         try:
             return self.db.get_unique_media_values_by_field(field_name=col_name)
         except Exception as e:
-            self.logger.error(f"Error in AiArr getting unique media values for column '{col_name}': {e}", exc_info=True)
+            self.logger.error(f"Error in Discovarr getting unique media values for column '{col_name}': {e}", exc_info=True)
             return []
 
     def trigger_scheduled_job(self, job_id: str) -> Dict[str, Any]:
@@ -955,7 +955,7 @@ class AiArr:
             Dict[str, Any]: A dictionary with "success" (bool) and "message" (str).
         """
         self.logger.info(f"Attempting to trigger scheduled job: {job_id}")
-        job_exists = self.scheduler.get_job(job_id) is not None # self.scheduler is AiArrScheduler
+        job_exists = self.scheduler.get_job(job_id) is not None
         if not job_exists:
             self.logger.warning(f"Job '{job_id}' not found for triggering.")
             return {"success": False, "message": f"Job '{job_id}' not found."}
@@ -963,5 +963,5 @@ class AiArr:
         if self.scheduler.trigger_job_now(job_id):
             return {"success": True, "message": f"Job '{job_id}' has been triggered to run now."}
         else:
-            # trigger_job_now in AiArrScheduler already logs specific errors
+            # trigger_job_now in DiscovarrScheduler already logs specific errors
             return {"success": False, "message": f"Failed to trigger job '{job_id}'. Check server logs for details."}

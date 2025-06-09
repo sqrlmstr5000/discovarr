@@ -1,3 +1,3 @@
 export const config = {
-    apiUrl: import.meta.env.VITE_AIARR_URL || "__API_ENDPOINT__"
+    apiUrl: import.meta.env.VITE_DISCOVARR_URL || "__API_ENDPOINT__"
 };

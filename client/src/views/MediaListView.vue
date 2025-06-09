@@ -617,7 +617,7 @@ const clearFilter = (filterKey) => {
                 :checked="isAllSelected"
                 @change="toggleSelectAll"
                 :disabled="filteredAndSortedMedia.length === 0"
-              class="w-5 h-5 cursor-pointer bg-gray-800 border-gray-600 rounded focus:ring-aiarr"
+              class="w-5 h-5 cursor-pointer bg-gray-800 border-gray-600 rounded focus:ring-discovarr"
                 title="Select/Deselect all visible"
               />
             </th>
@@ -745,7 +745,7 @@ const clearFilter = (filterKey) => {
                 <input
                   v-model="filters.title"
                   placeholder="Filter title..."
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr placeholder-gray-500"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr placeholder-gray-500"
                 />
                 <button
                   v-if="filters.title"
@@ -764,7 +764,7 @@ const clearFilter = (filterKey) => {
                   type="text"
                   v-model="filters.type"
                   placeholder="Filter type..."
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr placeholder-gray-500"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr placeholder-gray-500"
                 />
                 <button
                   v-if="filters.type"
@@ -783,7 +783,7 @@ const clearFilter = (filterKey) => {
                 <input
                   v-model="filters.release_date"
                   placeholder="Filter date..."
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr placeholder-gray-500"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr placeholder-gray-500"
                 />
                 <button
                   v-if="filters.release_date"
@@ -802,7 +802,7 @@ const clearFilter = (filterKey) => {
                   ref="networkFilterButtonRef"
                   type="button" 
                   @click="toggleNetworkDropdown" 
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr text-left truncate"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr text-left truncate"
                   :title="selectedNetworksText"
                 >
                   {{ selectedNetworksText }}
@@ -823,7 +823,7 @@ const clearFilter = (filterKey) => {
                   </div>
                   <div class="max-h-52 overflow-y-auto">
                     <label v-for="network in availableNetworks" :key="network" class="flex items-center px-3 py-1.5 text-sm text-white hover:bg-gray-700 cursor-pointer">
-                      <input type="checkbox" :value="network" v-model="filters.networks" class="mr-2 accent-aiarr">
+                      <input type="checkbox" :value="network" v-model="filters.networks" class="mr-2 accent-discovarr">
                       {{ network }}
                     </label>
                     <div v-if="availableNetworks.length === 0" class="px-3 py-1.5 text-sm text-gray-500">No networks available</div>
@@ -837,7 +837,7 @@ const clearFilter = (filterKey) => {
                   ref="genreFilterButtonRef"
                   type="button" 
                   @click="toggleGenreDropdown" 
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr text-left truncate"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr text-left truncate"
                   :title="selectedGenresText"
                 >
                   {{ selectedGenresText }}
@@ -858,7 +858,7 @@ const clearFilter = (filterKey) => {
                   </div>
                   <div class="max-h-52 overflow-y-auto">
                     <label v-for="genre in availableGenres" :key="genre" class="flex items-center px-3 py-1.5 text-sm text-white hover:bg-gray-700 cursor-pointer">
-                      <input type="checkbox" :value="genre" v-model="filters.genres" class="mr-2 accent-aiarr">
+                      <input type="checkbox" :value="genre" v-model="filters.genres" class="mr-2 accent-discovarr">
                       {{ genre }}
                     </label>
                     <div v-if="availableGenres.length === 0" class="px-3 py-1.5 text-sm text-gray-500">No genres available</div>
@@ -872,7 +872,7 @@ const clearFilter = (filterKey) => {
                   ref="sourceFilterButtonRef"
                   type="button"
                   @click="toggleSourceDropdown"
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr text-left truncate"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr text-left truncate"
                   :title="selectedSourcesText"
                 >
                   {{ selectedSourcesText }}
@@ -893,7 +893,7 @@ const clearFilter = (filterKey) => {
                   </div>
                   <div class="max-h-52 overflow-y-auto">
                     <label v-for="sourceItem in availableSources" :key="sourceItem" class="flex items-center px-3 py-1.5 text-sm text-white hover:bg-gray-700 cursor-pointer">
-                      <input type="checkbox" :value="sourceItem" v-model="filters.source" class="mr-2 accent-aiarr">
+                      <input type="checkbox" :value="sourceItem" v-model="filters.source" class="mr-2 accent-discovarr">
                       {{ sourceItem }}
                     </label>
                     <div v-if="availableSources.length === 0" class="px-3 py-1.5 text-sm text-gray-500">No sources available</div>
@@ -907,7 +907,7 @@ const clearFilter = (filterKey) => {
                   ref="mediaStatusFilterButtonRef"
                   type="button"
                   @click="toggleMediaStatusDropdown"
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr text-left truncate"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr text-left truncate"
                   :title="selectedMediaStatusesText"
                 >
                   {{ selectedMediaStatusesText }}
@@ -928,7 +928,7 @@ const clearFilter = (filterKey) => {
                   </div>
                   <div class="max-h-52 overflow-y-auto">
                     <label v-for="statusItem in availableMediaStatuses" :key="statusItem" class="flex items-center px-3 py-1.5 text-sm text-white hover:bg-gray-700 cursor-pointer">
-                      <input type="checkbox" :value="statusItem" v-model="filters.media_status" class="mr-2 accent-aiarr">
+                      <input type="checkbox" :value="statusItem" v-model="filters.media_status" class="mr-2 accent-discovarr">
                       {{ statusItem }}
                     </label>
                     <div v-if="availableMediaStatuses.length === 0" class="px-3 py-1.5 text-sm text-gray-500">No statuses available</div>
@@ -942,7 +942,7 @@ const clearFilter = (filterKey) => {
                   ref="originalLanguageFilterButtonRef"
                   type="button"
                   @click="toggleOriginalLanguageDropdown"
-                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-aiarr focus:border-aiarr text-left truncate"
+                  class="w-full pl-3 pr-8 py-1.5 bg-gray-900 text-white border border-gray-700 rounded-md text-sm focus:ring-discovarr focus:border-discovarr text-left truncate"
                   :title="selectedOriginalLanguagesText"
                 >
                   {{ selectedOriginalLanguagesText }}
@@ -963,7 +963,7 @@ const clearFilter = (filterKey) => {
                   </div>
                   <div class="max-h-52 overflow-y-auto">
                     <label v-for="langItem in availableOriginalLanguages" :key="langItem" class="flex items-center px-3 py-1.5 text-sm text-white hover:bg-gray-700 cursor-pointer">
-                      <input type="checkbox" :value="langItem" v-model="filters.original_language" class="mr-2 accent-aiarr">
+                      <input type="checkbox" :value="langItem" v-model="filters.original_language" class="mr-2 accent-discovarr">
                       {{ langItem }}
                     </label>
                     <div v-if="availableOriginalLanguages.length === 0" class="px-3 py-1.5 text-sm text-gray-500">No languages available</div>
@@ -999,7 +999,7 @@ const clearFilter = (filterKey) => {
                     :disabled="item.requested"
                     :title="item.requested ? 'Already Requested' : 'Request Media'"
                   >
-                    <Send :class="item.requested ? 'text-gray-600' : 'text-aiarr'" />
+                    <Send :class="item.requested ? 'text-gray-600' : 'text-discovarr'" />
                   </button>
               </td>
               <td class="px-3 py-2">
@@ -1010,7 +1010,7 @@ const clearFilter = (filterKey) => {
                   >{{ item.title }}</span>
                   <button
                     @click.stop="navigateToSearch(item.title)"
-                    class="ml-2 p-0.5 text-gray-400 hover:text-aiarr focus:outline-none rounded-full hover:bg-gray-800"
+                    class="ml-2 p-0.5 text-gray-400 hover:text-discovarr focus:outline-none rounded-full hover:bg-gray-800"
                     title="Search this title"
                   >
                     <MagnifyIcon :size="18" />
@@ -1039,7 +1039,7 @@ const clearFilter = (filterKey) => {
                 <button
                   v-if="item.search"
                   @click.stop="navigateToEditSavedSearch(item.search.id)"
-                  class="text-aiarr hover:opacity-80 focus:outline-none"
+                  class="text-discovarr hover:opacity-80 focus:outline-none"
                   :title="'Edit Search ' + item.search.id"
                 >
                   <Edit :size="24" />
@@ -1056,7 +1056,7 @@ const clearFilter = (filterKey) => {
               <td class="px-3 py-2 text-center">
                 <button
                   @click.stop="handleSingleDelete(item.id)"
-                  class="p-1 text-gray-400 hover:text-aiarr focus:outline-none"
+                  class="p-1 text-gray-400 hover:text-discovarr focus:outline-none"
                   title="Delete Media"
                 >
                   <DeleteIcon :size="20" />
@@ -1087,7 +1087,7 @@ const clearFilter = (filterKey) => {
       <select
         @change="handleBulkAction"
         :disabled="isBulkProcessing"
-        class="pl-3 pr-8 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:outline-none focus:border-aiarr focus:ring-1 focus:ring-aiarr appearance-none text-sm"
+        class="pl-3 pr-8 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:outline-none focus:border-discovarr focus:ring-1 focus:ring-discovarr appearance-none text-sm"
       >
         <option value="">Actions...</option>
         <option value="ignore">Toggle Ignore</option>
@@ -1096,7 +1096,7 @@ const clearFilter = (filterKey) => {
       </select>
       <!-- You might want a chevron icon for the select dropdown here -->
     </div>
-    <span v-if="isBulkProcessing" class="text-aiarr text-sm animate-pulse">Processing...</span>
+    <span v-if="isBulkProcessing" class="text-discovarr text-sm animate-pulse">Processing...</span>
   </div>
 
     <RequestModal

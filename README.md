@@ -1,10 +1,10 @@
-# AiArr - AI Powered Media Recommendations
+# Discovarr - AI Powered Media Recommendations
 
 ## Description
 
-AiArr is a comprehensive media management and automation tool designed to streamline your media consumption and discovery experience. It intelligently integrates with popular media servers like Jellyfin and Plex, download clients Radarr and Sonarr, and leverages the power of Google's Gemini AI to provide personalized media recommendations. 
+Discovarr is a comprehensive media management and automation tool designed to streamline your media consumption and discovery experience. It intelligently integrates with popular media servers like Jellyfin and Plex, download clients Radarr and Sonarr, and leverages the power of Google's Gemini AI to provide personalized media recommendations. 
 
-With AiArr, you can:
+With Discovarr, you can:
 - Automatically track your watch history from Jellyfin and Plex.
 - Get intelligent media suggestions based on your viewing habits and preferences.
 - Easily request new movies and TV shows through Radarr and Sonarr.
@@ -45,7 +45,7 @@ With AiArr, you can:
 *   **Media Management:**
     *   View active and ignored media suggestions.
     *   Toggle the ignore status of media items.
-    *   Delete media entries from the AiArr database.
+    *   Delete media entries from the Discovarr database.
 *   **Search & Discovery:**
     *   Save and manage custom search prompts for AI recommendations.
     *   Run saved searches to get fresh suggestions.
@@ -99,23 +99,23 @@ The original intent was to write a script to generate a prompt that gave me reco
 
 ## Docker Compose Example
 
-This example `docker-compose.yml` demonstrates a basic setup for AiArr. You'll need to adjust volumes and environment variables according to your specific setup. Environment variables can be configured here or left blank and set in the UI. 
+This example `docker-compose.yml` demonstrates a basic setup for Discovarr. You'll need to adjust volumes and environment variables according to your specific setup. Environment variables can be configured here or left blank and set in the UI. 
 
 ### Basic
 ```yaml
 services:
-  aiarr:
-    image: ghcr.io/tsquillario/aiarr:latest 
-    container_name: aiarr
+  discovarr:
+    image: ghcr.io/tsquillario/discovarr:latest 
+    container_name: discovarr
     restart: unless-stopped
     ports:
       - "8000:8000" 
     volumes:
-      - ./aiarr_config:/config
-      - ./aiarr_backups:/backups 
+      - ./discovarr_config:/config
+      - ./discovarr_backups:/backups 
     environment:
       # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
-      - VITE_AIARR_URL=http://192.168.0.100:8000/api
+      - VITE_DISCOVARR_URL=http://192.168.0.100:8000/api
 ```
 
 ### Environment Variables
@@ -130,7 +130,7 @@ services:
 - APP_SYSTEM_PROMPT="Your custom system prompt for Gemini"
 
 # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
-- VITE_AIARR_URL=http://192.168.0.100:8000/api
+- VITE_DISCOVARR_URL=http://192.168.0.100:8000/api
 
 # --- Jellyfin Settings ---
 - JELLYFIN_ENABLED=True # Set to True if using Jellyfin
@@ -160,4 +160,11 @@ services:
 
 # --- TMDB Settings ---
 - TMDB_API_KEY=your_tmdb_api_key
+```
+
+## Logo
+```
+Create a square logo with a pirate ship floating in the sea, it's night time with a starry sky and a full moon. There should be a letter D with the bow of the boat following the curve of the letter D. The image should have a transparent background with a white image. 
+
+3 complexity 
 ```

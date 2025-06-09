@@ -4,22 +4,21 @@ from .schedule import Schedule
 import json
 from datetime import datetime
 import asyncio 
-
-class AiArrScheduler(Schedule):
+class DiscovarrScheduler(Schedule):
     """
-    AiArr-specific implementation of the Schedule class.
-    Maps schedule function names to actual AiArr instance methods.
+    Discovarr-specific implementation of the Schedule class.
+    Maps schedule function names to actual Discovarr instance methods.
     """
 
-    def __init__(self, db, aiarr_instance):
+    def __init__(self, db, discovarr_instance):
         """
-        Initialize the AiArr scheduler.
+        Initialize the Discovarr scheduler.
 
         Args:
             db: Database instance for loading and saving schedules
-            aiarr_instance: Instance of AiArr class containing the methods to be scheduled
+            discovarr_instance: Instance of Discovarr class containing the methods to be scheduled
         """
-        self.aiarr = aiarr_instance
+        self.discovarr = discovarr_instance
         super().__init__(db)
         self.logger = logging.getLogger(__name__)
         # Schedules will be loaded explicitly after the scheduler is started
@@ -33,7 +32,7 @@ class AiArrScheduler(Schedule):
     #     # Process requests daily at 3 AM
     #     self.add_job(
     #         job_id="daily_process",
-    #         func=self.aiarr.process_watch_history,
+    #         func=self.discovarr.process_watch_history,
     #         hour=3,
     #         minute=0
     #     )
@@ -41,7 +40,7 @@ class AiArrScheduler(Schedule):
     #     # Check recently watched every 30 minutes
     #     self.add_job(
     #         job_id="check_recently_watched",
-    #         func=self.aiarr.jellyfin_get_recently_watched,
+    #         func=self.discovarr.jellyfin_get_recently_watched,
     #         minute="*/30"
     #     )
         
@@ -49,7 +48,7 @@ class AiArrScheduler(Schedule):
 
     def get_function(self, func_name: str) -> Optional[Callable]:
         """
-        Map function names to actual AiArr instance methods.
+        Map function names to actual Discovarr instance methods.
         The returned callable will receive args/kwargs from the Schedule table entry at runtime.
         
         Args:
@@ -62,7 +61,7 @@ class AiArrScheduler(Schedule):
         if func_name == 'sync_watch_history':
             # This is a synchronous function. AsyncIOScheduler will run it in an executor.
             # Expects no runtime args/kwargs from DB schedule.
-            return self.aiarr.sync_watch_history
+            return self.discovarr.sync_watch_history
         elif func_name == 'process_watch_history':
             # _create_process_function returns an async function directly.
             return self._create_process_function()
@@ -71,14 +70,14 @@ class AiArrScheduler(Schedule):
             # It expects runtime kwargs (e.g., {'limit': value}) from Schedule.kwargs in DB.
             def _jellyfin_runner(**runtime_kwargs):
                 self.logger.info(f"Executing scheduled 'jellyfin_get_recently_watched' with runtime_kwargs: {runtime_kwargs}")
-                return self.aiarr.jellyfin_get_recently_watched(limit=runtime_kwargs.get('limit'))
+                return self.discovarr.jellyfin_get_recently_watched(limit=runtime_kwargs.get('limit'))
             return _jellyfin_runner
         elif func_name == 'get_active_media':
             # Synchronous, expects no runtime args/kwargs.
-            return self.aiarr.get_active_media
+            return self.discovarr.get_active_media
         elif func_name == 'get_ignored_media':
             # Synchronous, expects no runtime args/kwargs.
-            return self.aiarr.get_ignored_media
+            return self.discovarr.get_ignored_media
         elif func_name == 'get_similar_media':
             # _create_search_function returns an async function directly.
             # It expects runtime kwargs from Schedule.kwargs in DB.
@@ -127,7 +126,7 @@ class AiArrScheduler(Schedule):
                 search_id = runtime_job_kwargs.get('search_id')
                 custom_prompt = runtime_job_kwargs.get('custom_prompt')
 
-                await self.aiarr.get_similar_media(
+                await self.discovarr.get_similar_media(
                     media_name=media_name,
                     search_id=search_id,
                     custom_prompt=custom_prompt
@@ -155,7 +154,7 @@ class AiArrScheduler(Schedule):
                 self.logger.warning(f"Scheduled '{job_name}' received unexpected arguments. Args: {args}, Kwargs: {kwargs}. These will be ignored by the task.")
 
             try:
-                await self.aiarr.process_watch_history()
+                await self.discovarr.process_watch_history()
             except Exception as e:
                 self.logger.error(f"Error executing scheduled '{job_name}': {e}", exc_info=True)
                 

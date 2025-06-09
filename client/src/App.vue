@@ -83,13 +83,13 @@ onBeforeUnmount(() => {
       <!-- Logo for Mobile Top Bar -->
       <img
         class="h-8 w-auto mt-3 mr-3"
-        src="/aiarr_favicon.png"
-        alt="AiArr Logo"
+        src="/logo.png"
+        alt="Discovarr Logo"
       />
       <!-- Hamburger Menu Button for Mobile (moved into top bar) -->
       <button
         @click="toggleMobileNav"
-        class="p-2 text-white hover:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-aiarr"
+        class="p-2 text-white hover:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-discovarr"
         aria-label="Toggle navigation menu"
       >
         <MenuIcon :size="28" />
@@ -105,15 +105,15 @@ onBeforeUnmount(() => {
         <div class="mb-5 px-2">
           <img
             class="h-8 w-auto max-w-full"
-            src="/aiarr_favicon.png"
-            alt="AiArr Logo"
+            src="/logo.png"
+            alt="Discovarr Logo"
           />
         </div>
 
         <!-- Icon Links -->
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
-          :class="{ 'bg-gray-700 border-r-4 border-aiarr': $route.name === 'search' && (!isMobile || isMobileNavOpen) }"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'search' && (!isMobile || isMobileNavOpen) }"
           title="Search"
           @click="() => { router.push('/search'); if (isMobile) toggleMobileNav(); }"
         >
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
         </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
-          :class="{ 'bg-gray-700 border-r-4 border-aiarr': $route.name === 'home' && (!isMobile || isMobileNavOpen) }"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'home' && (!isMobile || isMobileNavOpen) }"
           title="Home"
           @click="() => { router.push('/'); if (isMobile) toggleMobileNav(); }"
         >
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
         </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
-          :class="{ 'bg-gray-700 border-r-4 border-aiarr': $route.name === 'watch-history' && (!isMobile || isMobileNavOpen) }"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'watch-history' && (!isMobile || isMobileNavOpen) }"
           title="Watch History"
           @click="() => { router.push('/watch-history'); if (isMobile) toggleMobileNav(); }"
         >
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
         </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative mt-auto mb-2"
-          :class="{ 'bg-gray-700 border-r-4 border-aiarr': $route.name === 'settings' && (!isMobile || isMobileNavOpen) }"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'settings' && (!isMobile || isMobileNavOpen) }"
           title="Settings"
           @click="() => { router.push('/settings'); if (isMobile) toggleMobileNav(); }"
         >

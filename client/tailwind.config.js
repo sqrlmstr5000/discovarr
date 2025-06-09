@@ -7,7 +7,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'aiarr': {
+        'discovarr': {
           DEFAULT: '#1d8bfa',
           600: '#1d8bfa'
         }

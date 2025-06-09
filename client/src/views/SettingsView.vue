@@ -315,7 +315,7 @@ onMounted(async () => { // Make onMounted async
           <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div>
               <label for="dateRange" class="block text-sm font-medium text-gray-300 mb-1">Date Range</label>
-              <select id="dateRange" v-model="selectedRange" @change="updateDatesFromRange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-aiarr focus:border-aiarr">
+              <select id="dateRange" v-model="selectedRange" @change="updateDatesFromRange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-discovarr focus:border-discovarr">
                 <option value="all_time">All Time</option>
                 <option value="yesterday">Yesterday</option>
                 <option value="last_week">Last Week</option>
@@ -326,11 +326,11 @@ onMounted(async () => { // Make onMounted async
             </div>
             <div>
               <label for="startDate" class="block text-sm font-medium text-gray-300 mb-1">Start Date</label>
-              <input type="datetime-local" id="startDate" v-model="startDate" @change="handleDateInputChange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-aiarr focus:border-aiarr">
+              <input type="datetime-local" id="startDate" v-model="startDate" @change="handleDateInputChange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-discovarr focus:border-discovarr">
             </div>
             <div>
               <label for="endDate" class="block text-sm font-medium text-gray-300 mb-1">End Date</label>
-              <input type="datetime-local" id="endDate" v-model="endDate" @change="handleDateInputChange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-aiarr focus:border-aiarr">
+              <input type="datetime-local" id="endDate" v-model="endDate" @change="handleDateInputChange" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-md focus:ring-discovarr focus:border-discovarr">
             </div>
           </div>
 

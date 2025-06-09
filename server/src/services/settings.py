@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from .models import Settings, SettingType # Import SettingType from models
 
 if TYPE_CHECKING:
-    from ..aiarr import AiArr # For type hinting AiArr instance
+    from ..discovarr import Discovarr # For type hinting Discovarr instance
 
 class SettingsService:
     """
@@ -24,7 +24,7 @@ class SettingsService:
             "suggestion_limit": {"value": 20, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
             "test_mode": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing when requesting media from Radarr and Sonarr to False. This won't download anything just add the media."},
             "backup_before_upgrade": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically backup the database before running migrations/upgrades."},
-            "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the AiArr Media table"},
+            "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the Discovarr Media table"},
             "system_prompt": {"value": "You are a movie recommendation assistant. Your job is to suggest movies to users based on their preferences and current context.", "type": SettingType.STRING, "description": "Default system prompt to guide the model's behavior."},
         },
         "jellyfin": {
@@ -56,10 +56,10 @@ class SettingsService:
     # This ensures LLM provider defaults are loaded dynamically.
     DEFAULT_SETTINGS: Dict[str, Dict[str, Any]] = {}
 
-    def __init__(self, aiarr_app: Optional['AiArr'] = None):
+    def __init__(self, discovarr_app: Optional['Discovarr'] = None):
         """Initialize the settings service."""
         self.logger = logging.getLogger(__name__)
-        self.aiarr_app = aiarr_app
+        self.discovarr_app = discovarr_app
         SettingsService._build_default_settings_if_needed()
         self._initialize_settings()
 
@@ -213,12 +213,12 @@ class SettingsService:
             self.logger.info(f"Updated setting {group}.{name} to {value}")
             
             # Attempt to reload configuration with the new setting
-            if self.aiarr_app: # aiarr_app is an instance of AiArr
+            if self.discovarr_app: # discovarr_app is an instance of Discovarr
                 try:
-                    self.logger.info(f"Attempting to reload AiArr configuration after updating {group}.{name}.")
-                    self.aiarr_app.reload_configuration()
-                    self.logger.info(f"AiArr configuration reloaded successfully after updating {group}.{name}.")
-                except ValueError as e: # Catch validation errors from AiArr._validate_configuration
+                    self.logger.info(f"Attempting to reload Discovarr configuration after updating {group}.{name}.")
+                    self.discovarr_app.reload_configuration()
+                    self.logger.info(f"Discovarr configuration reloaded successfully after updating {group}.{name}.")
+                except ValueError as e: # Catch validation errors from Discovarr._validate_configuration
                     self.logger.error(f"Configuration reload failed after updating {group}.{name} to '{value}': {e}. Reverting setting.")
                     # Revert the setting in the database
                     setting.value = old_db_value_str

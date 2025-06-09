@@ -75,7 +75,7 @@ onMounted(() => {
       Include Favorites From:
       <select
         v-model="internalFavoriteOption"
-        class="bg-gray-700 text-gray-200 px-2 py-1 font-mono focus:ring-1 focus:ring-aiarr rounded-md w-auto"
+        class="bg-gray-700 text-gray-200 px-2 py-1 font-mono focus:ring-1 focus:ring-discovarr rounded-md w-auto"
         title="Select favorite option: 'all' or a specific username"
       >
         <option value="">None</option>

@@ -11,7 +11,7 @@
         v-model="form.isScheduled"
         type="checkbox"
         id="scheduleSearchModal"
-        class="mr-2 h-4 w-4 accent-aiarr"
+        class="mr-2 h-4 w-4 accent-discovarr"
         :disabled="isDefaultSearch"
       />
       <label for="scheduleSearchModal" class="text-gray-300 cursor-pointer">Schedule this search</label>
@@ -23,7 +23,7 @@
           v-model="form.enabled"
           type="checkbox"
           id="scheduleEnabledModal"
-          class="mr-2 h-4 w-4 accent-aiarr"
+          class="mr-2 h-4 w-4 accent-discovarr"
         />
         <label for="scheduleEnabledModal" class="text-gray-300 cursor-pointer">Enable this schedule</label>
       </div>
@@ -34,7 +34,7 @@
             v-model="form.minute"
             placeholder="*"
             title="Minute (0-59)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
         <div>
@@ -43,7 +43,7 @@
             v-model="form.hour"
             placeholder="*"
             title="Hour (0-23)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
         <div>
@@ -52,7 +52,7 @@
             v-model="form.day"
             placeholder="*"
             title="Day of Month (1-31)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
         <div>
@@ -61,7 +61,7 @@
             v-model="form.month"
             placeholder="*"
             title="Month (1-12 or JAN-DEC)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
         <div>
@@ -70,7 +70,7 @@
             v-model="form.dayOfWeek"
             placeholder="*"
             title="Day of Week (0-6 or SUN-SAT)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
         <div>
@@ -79,7 +79,7 @@
             v-model="form.year"
             placeholder="*"
             title="Year (e.g., 2024)"
-            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-aiarr text-sm"
+            class="w-full p-2 bg-black text-white border border-gray-600 rounded-md focus:outline-none focus:border-discovarr text-sm"
           />
         </div>
       </div>

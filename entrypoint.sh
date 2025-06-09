@@ -2,13 +2,13 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # The runtime environment variable that holds the API URL
-RUNTIME_API_URL_ENV_VAR="VITE_AIARR_URL"
+RUNTIME_API_URL_ENV_VAR="VITE_DISCOVARR_URL"
 
 # The placeholder string in your JS/HTML code
 PLACEHOLDER="__API_ENDPOINT__"
 
 # Default API URL if the environment variable is not set or is empty
-# This will be used if VITE_AIARR_URL is not provided when running the container.
+# This will be used if VITE_DISCOVARR_URL is not provided when running the container.
 DEFAULT_FALLBACK_URL="http://localhost:8000/api" # Adjust if your default API path is different
 
 # Directory where your built frontend assets are located (copied from client/dist)

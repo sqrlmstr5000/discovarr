@@ -42,13 +42,13 @@
                             @click.stop
                         >{{ movie.tmdb_id }}</a>
                         <span v-else class="text-gray-500 italic">N/A</span>
-                        <button @click.stop="startEditTmdbId" class="ml-1 text-gray-400 hover:text-aiarr p-0.5 rounded-full hover:bg-gray-800">
+                        <button @click.stop="startEditTmdbId" class="ml-1 text-gray-400 hover:text-discovarr p-0.5 rounded-full hover:bg-gray-800">
                             <PencilIcon :size="14" />
                         </button>
                     </span>
                     <span v-else class="ml-1 flex items-center space-x-1">
                         <input type="text" v-model="editableTmdbIdValue" 
-                               class="bg-gray-900 text-white border border-gray-700 rounded-md px-1 py-0.5 text-xs w-20 focus:ring-aiarr focus:border-aiarr"
+                               class="bg-gray-900 text-white border border-gray-700 rounded-md px-1 py-0.5 text-xs w-20 focus:ring-discovarr focus:border-discovarr"
                                @keyup.enter="saveEditTmdbId" @keyup.esc="cancelEditTmdbId" @click.stop />
                         <button @click.stop="saveEditTmdbId" class="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-gray-800"><CheckIcon :size="16" /></button>
                         <button @click.stop="cancelEditTmdbId" class="text-red-500 hover:text-red-400 p-0.5 rounded-full hover:bg-gray-800"><CloseIcon :size="16" /></button>
@@ -91,7 +91,7 @@
                     class="w-full flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-white transition-colors duration-150 ease-in-out"
                     :class="movie.requested 
                         ? 'bg-gray-600 cursor-not-allowed' 
-                        : 'bg-aiarr hover:bg-aiarr-dark focus:outline-none focus:ring-2 focus:ring-aiarr-light focus:ring-opacity-75'"
+                        : 'bg-discovarr hover:bg-discovarr-dark focus:outline-none focus:ring-2 focus:ring-discovarr-light focus:ring-opacity-75'"
                     :title="movie.requested ? 'This item has already been requested' : 'Request this media'"
                 >
                     <SendIcon :size="20" class="mr-2" :fillColor="movie.requested ? '#9CA3AF' : '#FFFFFF'" />

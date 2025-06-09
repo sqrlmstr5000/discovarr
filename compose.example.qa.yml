@@ -5,14 +5,14 @@ networks:
     external: true
 
 services:
-  aiarr-qa:
+  discovarr-qa:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         - PUID=1884
         - PGID=1884
-    container_name: aiarr-qa
+    container_name: discovarr-qa
     ports:
       - "8000:8000"  # FastAPI backend dev server (using host port 8001 to avoid conflicts)
     environment:
@@ -20,9 +20,9 @@ services:
       - LOGLEVEL=DEBUG
       - TZ=America/Denver
       # Client needs to know where the API is (exposed on host port 8001)
-      - VITE_AIARR_URL=http://192.168.0.100:8001/api
+      - VITE_DISCOVARR_URL=http://192.168.0.100:8001/api
 
-      # Backend API Keys and URLs (copy from your existing aiarr-api or aiarr service)
+      # Backend API Keys and URLs (copy from your existing discovarr-api or discovarr service)
       - JELLYFIN_URL=http://jellyfin:8096
       - JELLYFIN_API_KEY=
       - GEMINI_API_KEY= # NO DOUBLE QUOTES

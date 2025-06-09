@@ -520,7 +520,7 @@ const parseJsonString = (jsonString) => {
                             v-else
                             type="button"
                             @click="handleDelete(search.id)"
-                            class="p-1 text-gray-400 hover:text-aiarr focus:outline-none rounded-full hover:bg-gray-800"
+                            class="p-1 text-gray-400 hover:text-discovarr focus:outline-none rounded-full hover:bg-gray-800"
                             title="Delete this search"
                             >
                             <Delete :size="20" />
@@ -579,7 +579,7 @@ const parseJsonString = (jsonString) => {
               </button>
               <button
               type="button"
-              class="px-6 py-2.5 bg-aiarr text-white rounded-lg hover:opacity-90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              class="px-6 py-2.5 bg-discovarr text-white rounded-lg hover:opacity-90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               @click="handleSubmit"
               :disabled="loading || !searchText || !initialLoadingDone"
               >
@@ -600,7 +600,7 @@ const parseJsonString = (jsonString) => {
       <div class="w-full md:w-7/12 flex flex-col md:h-full md:overflow-y-auto">
         <!-- Loading Indicator -->
         <div v-if="loading" class="flex flex-col justify-center items-center py-10 text-white">
-        <svg class="animate-spin h-10 w-10 text-aiarr mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin h-10 w-10 text-discovarr mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
@@ -672,7 +672,7 @@ const parseJsonString = (jsonString) => {
                             <button
                               type="button"
                               @click="openRequestModalForItem(item)"
-                              class="flex items-center px-4 py-2 bg-aiarr text-white text-sm rounded-lg hover:opacity-90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                              class="flex items-center px-4 py-2 bg-discovarr text-white text-sm rounded-lg hover:opacity-90 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                               :disabled="!item.tmdb_id" 
                             >
                               <Send :size="18" class="mr-2" /> Request

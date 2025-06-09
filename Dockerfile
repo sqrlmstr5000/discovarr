@@ -52,8 +52,8 @@ ENV PYTHONUNBUFFERED 1
 ARG PUID=1884
 ARG PGID=1884
 
-# Create a non-root user and group 'aiarr' with specific GID and UID for security
-RUN groupadd -g ${PGID} aiarr && useradd -u ${PUID} -g ${PGID} aiarr
+# Create a non-root user and group 'discovarr' with specific GID and UID for security
+RUN groupadd -g ${PGID} discovarr && useradd -u ${PUID} -g ${PGID} discovarr
 
 # Copy installed Python packages from the backend-builder stage
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
@@ -80,7 +80,7 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to the non-root user
-USER aiarr
+USER discovarr
 
 # Expose the port the application runs on (should match your FastAPI config and docker-compose)
 EXPOSE 8000
