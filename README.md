@@ -105,7 +105,7 @@ This example `docker-compose.yml` demonstrates a basic setup for Discovarr. You'
 ```yaml
 services:
   discovarr:
-    image: ghcr.io/tsquillario/discovarr:latest 
+    image: ghcr.io/sqrlmstr5000/discovarr:latest 
     container_name: discovarr
     restart: unless-stopped
     ports:
