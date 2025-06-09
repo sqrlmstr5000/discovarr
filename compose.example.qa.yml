@@ -9,9 +9,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        - PUID=1884
-        - PGID=1884
     container_name: discovarr-qa
     ports:
       - "8000:8000"  # FastAPI backend dev server (using host port 8001 to avoid conflicts)

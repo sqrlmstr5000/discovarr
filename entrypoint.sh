@@ -1,6 +1,38 @@
 #!/bin/sh
 set -e # Exit immediately if a command exits with a non-zero status.
 
+# --- PUID/PGID Runtime Configuration ---
+# Use environment variables PUID and PGID, with defaults if not set.
+# These defaults should ideally match the ones used at build time if no runtime vars are provided.
+PUID_TO_SET=${PUID:-1884}
+PGID_TO_SET=${PGID:-1884}
+
+APP_USER="discovarr"
+
+# Check if the user exists before trying to get its ID
+if id "$APP_USER" >/dev/null 2>&1; then
+    CURRENT_UID=$(id -u "$APP_USER")
+    CURRENT_GID=$(id -g "$APP_USER")
+
+    echo "INFO: Desired PUID=${PUID_TO_SET}, PGID=${PGID_TO_SET}"
+    echo "INFO: Current ${APP_USER} UID=${CURRENT_UID}, GID=${CURRENT_GID}"
+
+    # Modify group GID if necessary
+    if [ "$PGID_TO_SET" != "$CURRENT_GID" ]; then
+        echo "INFO: Modifying group ${APP_USER} GID from $CURRENT_GID to $PGID_TO_SET"
+        groupmod -o -g "$PGID_TO_SET" "$APP_USER"
+    fi
+
+    # Modify user UID if necessary
+    if [ "$PUID_TO_SET" != "$CURRENT_UID" ]; then
+        echo "INFO: Modifying user ${APP_USER} UID from $CURRENT_UID to $PUID_TO_SET"
+        usermod -o -u "$PUID_TO_SET" "$APP_USER"
+    fi
+else
+    echo "WARNING: User ${APP_USER} not found. Skipping PUID/PGID modification. This might indicate an issue with the Docker image build."
+fi
+# --- End PUID/PGID Runtime Configuration ---
+
 # The runtime environment variable that holds the API URL
 RUNTIME_API_URL_ENV_VAR="VITE_DISCOVARR_URL"
 
@@ -37,6 +69,12 @@ find "${STATIC_ASSETS_DIR}" -type f \( -name "*.js" -o -name "*.html" \) -print0
 
 echo "INFO: Placeholder replacement complete."
 
+# Update ownership of key directories after potential UID/GID changes and before switching user.
+# This ensures the application user can read/write necessary files.
+echo "INFO: Ensuring ownership of /app, /config, /backups for UID ${PUID_TO_SET} and GID ${PGID_TO_SET}"
+chown -R "${PUID_TO_SET}:${PGID_TO_SET}" /app /config /backups
+
 # Execute the CMD passed to the entrypoint (e.g., uvicorn ...)
-echo "INFO: Executing command: $@"
-exec "$@"
+# Use gosu to drop privileges and execute the command as the APP_USER
+echo "INFO: Executing command as user ${APP_USER} (UID: $(id -u ${APP_USER}), GID: $(id -g ${APP_USER})): $@"
+exec gosu "$APP_USER" "$@"

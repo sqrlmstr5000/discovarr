@@ -99,9 +99,12 @@ The original intent was to write a script to generate a prompt that gave me reco
 
 ## Docker Compose Example
 
-This example `docker-compose.yml` demonstrates a basic setup for Discovarr. You'll need to adjust volumes and environment variables according to your specific setup. Environment variables can be configured here or left blank and set in the UI. 
+- This example `compose.yml` demonstrates the minimum config for the Discovarr container.
+- Environment variables can be set according to your specific setup and will populate Settings on first launch.
+- Volumes used in the container are `/config` and `/backups`. Map `/config` to a path on your host to persist the database between container restarts. 
+- The container does not run as root and uses a `discovarr` user and group with UID/GID `1884` by default. The `entrypoint.sh` script will create this user/group within the container and ensure proper directory permissions. 
+- If you want to change the `1884` UID/GID use the `PUID` and `PGID` environment variables. 
 
-### Basic
 ```yaml
 services:
   discovarr:
@@ -110,16 +113,15 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000" 
-    volumes:
-      - ./discovarr_config:/config
-      - ./discovarr_backups:/backups 
     environment:
       # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
       - VITE_DISCOVARR_URL=http://192.168.0.100:8000/api
 ```
 
-### Environment Variables
+### Environment Variables (optional)
 ```
+- PUID=1884
+- PGID=1884
 - LOGLEVEL=INFO # DEBUG, INFO, WARNING, ERROR, CRITICAL
 - APP_DEFAULT_PROMPT="Your custom default prompt here"
 - APP_RECENT_LIMIT=10
@@ -146,11 +148,13 @@ services:
 - RADARR_URL=http://radarr:7878
 - RADARR_API_KEY=your_radarr_api_key
 - RADARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
+- RADARR_ROOT_DIR_PATH=/movies
 
 # --- Sonarr Settings ---
 - SONARR_URL=http://sonarr:8989
 - SONARR_API_KEY=your_sonarr_api_key
 - SONARR_DEFAULT_QUALITY_PROFILE_ID=1 # Example ID
+- SONARR_ROOT_DIR_PATH=/tv
 
 # --- Gemini AI Settings ---
 - GEMINI_API_KEY=your_gemini_api_key

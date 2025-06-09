@@ -48,17 +48,18 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Define PUID and PGID build arguments with default values
-ARG PUID=1884
-ARG PGID=1884
+# Define build arguments for PUID/PGID with defaults
+# These are used for creating the user and setting initial permissions during the build.
+ARG PUID_BUILD=1884
+ARG PGID_BUILD=1884
 
 # Create a non-root user and group 'discovarr' with specific GID and UID for security
-RUN groupadd -g ${PGID} discovarr && useradd -u ${PUID} -g ${PGID} discovarr
+RUN groupadd -g ${PGID_BUILD} discovarr && \
+    useradd --no-create-home -s /bin/false -u ${PUID_BUILD} -g ${PGID_BUILD} discovarr
 
 # Copy installed Python packages from the backend-builder stage
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
 COPY --from=backend-builder /usr/local/bin/ /usr/local/bin/
-
 # Copy the backend application code from the backend-builder stage
 COPY --from=backend-builder /app/server ./server
 
@@ -71,17 +72,22 @@ COPY --from=client-builder /app/client/dist ./server/static
 # Create directories for persistent data (config, backups) and set ownership
 # These paths align with the volumes in your docker-compose.yml
 RUN mkdir -p /config /backups && \
-    chown -R ${PUID}:${PGID} /config /backups /app
-#VOLUME /config
-#VOLUME /backups
+    chown -R ${PUID_BUILD}:${PGID_BUILD} /config /backups /app
+
+# Install gosu for dropping privileges
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+
+# Set default PUID/PGID environment variables if not provided at runtime
+# These are used by the entrypoint.sh script.
+ENV PUID=${PUID_BUILD}
+ENV PGID=${PGID_BUILD}
 
 # Copy the entrypoint script and make it executable
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Switch to the non-root user
-USER discovarr
-
+# The entrypoint script will handle switching to the non-root user
+# USER discovarr
 # Expose the port the application runs on (should match your FastAPI config and docker-compose)
 EXPOSE 8000
 
