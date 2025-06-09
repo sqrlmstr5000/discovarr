@@ -11,8 +11,8 @@ from typing import Optional, Dict, List, Any  # Import typing for better code cl
 from services.jellyfin import Jellyfin
 from services.radarr import Radarr
 from services.sonarr import Sonarr  
-from services.gemini import Gemini
-from services.ollama import Ollama
+from plugins.gemini import Gemini
+from plugins.ollama import Ollama
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import DiscovarrScheduler

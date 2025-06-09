@@ -3,11 +3,11 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List
 
-import ollama # Official Ollama client
+import plugins.ollama as ollama # Official Ollama client
 
-from .models import Suggestion, SuggestionList, MediaType
-from .llm_provider_base import LLMProviderBase
-from .models import SettingType # Import SettingType from models
+from services.models import Suggestion, SuggestionList, MediaType
+from services.llm_provider_base import LLMProviderBase
+from services.models import SettingType # Import SettingType from models
 
 class Ollama(LLMProviderBase):
     """

@@ -113,8 +113,8 @@ class SettingsService:
             return
 
         # Delayed imports to prevent circular dependencies at module load time
-        from .gemini import Gemini
-        from .ollama import Ollama
+        from plugins.gemini import Gemini
+        from plugins.ollama import Ollama
         # Add other LLMProviderBase implementations here
         # from .openai import OpenAi # Example if OpenAi becomes a provider
 

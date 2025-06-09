@@ -6,9 +6,9 @@ from pydantic import BaseModel
 import asyncio # For running sync code in async
 from google import genai
 from google.genai import types
-from .models import Suggestion, SuggestionList
-from .llm_provider_base import LLMProviderBase
-from .models import SettingType # Import SettingType from models
+from services.models import Suggestion, SuggestionList
+from services.llm_provider_base import LLMProviderBase
+from services.models import SettingType # Import SettingType from models
 
 class Gemini(LLMProviderBase):
     """
