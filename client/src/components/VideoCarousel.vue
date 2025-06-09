@@ -18,7 +18,7 @@
         >
             <Slide
                 v-for="(media, index) in movies"
-                :key="media.id" 
+                :key="media.media_id" 
                 class="flex items-center object-cover text-white bg-transparent"
             >
                 <div 
@@ -28,7 +28,7 @@
                     <img 
                         style="user-select: none" 
                         class="pointer-events-none w-full h-full object-cover"
-                        :src="'http://192.168.0.137:8096/Items/'+media.id+'/Images/Primary?fillHeight=1440&fillWidth=960&quality=96'"
+                        :src="'http://192.168.0.137:8096/Items/'+media.media_id+'/Images/Primary?fillHeight=1440&fillWidth=960&quality=96'"
                         :alt="media.title"
                     >
                     <button

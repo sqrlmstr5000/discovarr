@@ -7,7 +7,7 @@ import asyncio # For running sync code in async
 from google import genai
 from google.genai import types
 from services.models import Suggestion, SuggestionList
-from services.llm_provider_base import LLMProviderBase
+from providers.llm_provider_base import LLMProviderBase
 from services.models import SettingType # Import SettingType from models
 
 class Gemini(LLMProviderBase):

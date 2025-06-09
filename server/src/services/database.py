@@ -284,14 +284,12 @@ class Database:
             # Check if an entry already exists for this media_jellyfin_id and user.
             # This requires WatchHistory model to have 'media_jellyfin_id' and 'media_type' fields.
             existing_entry = WatchHistory.get_or_none(
-                (WatchHistory.title == title) &
-                (WatchHistory.watched_by == watched_by)
+                (fn.Lower(WatchHistory.title) == title.lower()) &
+                (fn.Lower(WatchHistory.watched_by) == watched_by.lower())
             )
 
             if existing_entry:
                 existing_entry.last_played_date = dt_last_played_date_utc
-                existing_entry.id = id  # Update ID in case it changed
-                existing_entry.title = title  # Update title in case it changed
                 existing_entry.media_type = media_type # Update type
                 existing_entry.updated_at = datetime.now()
                 existing_entry.save()
@@ -299,7 +297,7 @@ class Database:
             else:
                 WatchHistory.create(
                     title=title,
-                    id=id,
+                    media_id=id,
                     media_type=media_type,
                     watched_by=watched_by,
                     last_played_date=dt_last_played_date_utc

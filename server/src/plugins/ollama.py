@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, List
 import plugins.ollama as ollama # Official Ollama client
 
 from services.models import Suggestion, SuggestionList, MediaType
-from services.llm_provider_base import LLMProviderBase
+from providers.llm_provider_base import LLMProviderBase
 from services.models import SettingType # Import SettingType from models
 
 class Ollama(LLMProviderBase):

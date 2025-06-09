@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from jinja2 import Template # Import Jinja2 Template
 from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any  # Import typing for better code clarity
-from services.jellyfin import Jellyfin
+from plugins.jellyfin import Jellyfin
 from services.radarr import Radarr
 from services.sonarr import Sonarr  
 from plugins.gemini import Gemini
@@ -18,7 +18,7 @@ from services.database import Database
 from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
-from services.plex import Plex
+from plugins.plex import Plex
 from services.models import ItemsFiltered
 
 class Discovarr:
@@ -84,7 +84,6 @@ class Discovarr:
         self.gemini = None
         self.ollama = None
         self.tmdb = None
-        self.jellyfin_user_id = None
 
         # Load backup setting first as it's needed for Database initialization
         self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
@@ -152,7 +151,6 @@ class Discovarr:
  
         # (Re)Initialize services with the new configuration
         self.plex = None # Reset before potential re-init
-        self.jellyfin_user_id = None
         self.jellyfin = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_token:
@@ -242,12 +240,12 @@ class Discovarr:
             return None
         return self.plex.get_users()
 
-    def plex_get_user_by_name(self, plex_username: str) -> Optional[Dict[str, Any]]:
+    def plex_get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
         """Get a specific Plex user by name."""
         if not self.plex:
             self.logger.warning("Plex service not available.")
             return None
-        return self.plex.get_user_by_name(plex_username)
+        return self.plex.get_user_by_name(username)
 
     def plex_get_recently_watched(self, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """Get recently watched items for the default Plex user."""
@@ -291,14 +289,14 @@ class Discovarr:
             self.logger.warning("Jellyfin service not available.")
             return None
         user = self.jellyfin.get_user_by_name("trevor")
-        return self.jellyfin.get_recently_watched(limit=limit, jellyfin_user_id=user.get("Id"))
+        return self.jellyfin.get_recently_watched(limit=limit, user_id=user.get("Id"))
     
     def jellyfin_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         if not self.jellyfin:
             self.logger.warning("Jellyfin service not available.")
             return None
         user = self.jellyfin.get_user_by_name("trevor")
-        r = self.jellyfin.get_recently_watched(limit=limit, jellyfin_user_id=user.get("Id"))
+        r = self.jellyfin.get_recently_watched(limit=limit, user_id=user.get("Id"))
         return self.jellyfin.get_items_filtered(items=r, attribute_filter="Name")
     def get_prompt(self, limit: int, media_name: Optional[str] = None, favorite_option: Optional[str] = None, template_string: Optional[str] = None) -> str:
         """
@@ -344,15 +342,15 @@ class Discovarr:
                         all_jellyfin_users = self.jellyfin.get_users()
                         if all_jellyfin_users:
                             for user in all_jellyfin_users:
-                                user_favorites = self.jellyfin.get_favorites(jellyfin_user_id=user.get("Id"))
+                                user_favorites = self.jellyfin.get_favorites(user_id=user.get("Id"))
                                 user_favorites_filtered = self.jellyfin.get_items_filtered(items=user_favorites, attribute_filter="Name")
                                 self.logger.debug(f"Jellyfin User {user.get('Name')} favorites: {user_favorites_filtered}")
                                 if user_favorites_filtered: all_favorites.extend(user_favorites_filtered)
                     else: # Specific Jellyfin user
-                        user = self.jellyfin.get_user_by_name(jellyfin_username=favorite_option)
+                        user = self.jellyfin.get_user_by_name(username=favorite_option)
                         if user:
                             self.logger.debug(f"Jellyfin User {user.get('Name')} found with ID {user.get('Id')}")
-                            user_favorites = self.jellyfin.get_favorites(jellyfin_user_id=user.get("Id"))
+                            user_favorites = self.jellyfin.get_favorites(user_id=user.get("Id"))
                             user_favorites_filtered = self.jellyfin.get_items_filtered(items=user_favorites, attribute_filter="Name")
                             if user_favorites_filtered: all_favorites.extend(user_favorites_filtered)
                             self.logger.debug(f"Jellyfin User {user.get('Name')} favorites: {user_favorites_filtered}")
@@ -625,7 +623,7 @@ class Discovarr:
                         continue
                     self.logger.debug(f"Syncing watch history for Jellyfin user: {user_name} (ID: {user_id})")
                     recently_watched_items = self.jellyfin.get_recently_watched(
-                        jellyfin_user_id=user_id, limit=self.recent_limit
+                        user_id=user_id, limit=self.recent_limit
                     )
                     self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "jellyfin")
                     # Store filtered names for the response, consistent with previous behavior

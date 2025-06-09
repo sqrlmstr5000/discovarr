@@ -3,14 +3,16 @@ import json
 import logging
 import sys  
 from urllib.parse import urljoin
-from typing import Optional, Dict, List, Any 
-from .models import ItemsFiltered
+from typing import Optional, Dict, List, Any, Union
+from services.models import ItemsFiltered
+from providers.library_provider_base import LibraryProviderBase # Import the base class
 
-class Jellyfin:
+class Jellyfin(LibraryProviderBase):
     """
     A class to interact with the Jellyfin API for user and media data.
     """
 
+    PROVIDER_NAME = "jellyfin"
     def __init__(self, jellyfin_url: str, jellyfin_api_key: str, limit: int = 10):
         """
         Initializes the Jellyfin class with API configurations.
@@ -29,6 +31,11 @@ class Jellyfin:
         self.limit = limit
 
         self.jellyfin_auth = f"MediaBrowser Client='other', Device='my-script', DeviceId='some-unique-id', Version='0.0.0', Token={self.jellyfin_api_key}"
+
+    @property
+    def name(self) -> str:
+        """Returns the name of the library provider."""
+        return self.PROVIDER_NAME
 
     def get_users(self) -> Optional[List[Dict[str, Any]]]:
         """
@@ -55,12 +62,15 @@ class Jellyfin:
             self.logger.exception(f"An unexpected error occurred: {e}")
         return None
 
-    def get_user_by_name(self, jellyfin_username: str) -> Optional[str]:
+    def get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Looks up the Jellyfin user ID using the provided username.
 
+        Args:
+            username (str): The username to search for.
+
         Returns:
-            str: The Jellyfin user ID, or None on error.
+            Optional[Dict[str, Any]]: The user object (dictionary) if found, or None otherwise.
         """
         endpoint = urljoin(self.jellyfin_url, "/Users")
         headers = {
@@ -72,9 +82,9 @@ class Jellyfin:
             response.raise_for_status()
             users_data = response.json()
             # Iterate through the users to find the one with the matching username.
-            for user in users_data:
-                if user.get("Name") == jellyfin_username:
-                    return user  # Return the user ID if found
+            for user_dict in users_data:
+                if user_dict.get("Name") == username:
+                    return user_dict  # Return the user ID if found
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error looking up Jellyfin user ID: {e}")
         except json.JSONDecodeError:
@@ -85,24 +95,25 @@ class Jellyfin:
     
     
 
-    def get_recently_watched(self, jellyfin_user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieves recently watched items from the Jellyfin API.
 
         Args:
+            user_id (str): The unique identifier for the user.
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
 
         Returns:
             list: A list of recently watched items (dictionaries) from the Jellyfin API, or None on error.
         """
         try:
-            if not self.jellyfin_url or not self.jellyfin_api_key or not jellyfin_user_id:
+            if not self.jellyfin_url or not self.jellyfin_api_key or not user_id:
                 self.logger.error("Jellyfin URL, Key, and User ID are required.")
                 return None
 
             limit = limit if limit is not None else self.limit  # Use provided limit or default
 
-            endpoint = urljoin(self.jellyfin_url, f"/Users/{jellyfin_user_id}/Items")
+            endpoint = urljoin(self.jellyfin_url, f"/Users/{user_id}/Items")
             headers = {
                 "Authorization": self.jellyfin_auth,
                 "Content-Type": "application/json",
@@ -129,24 +140,25 @@ class Jellyfin:
             self.logger.exception(f"An unexpected error occurred: {e}")
         return None
     
-    def get_favorites(self, jellyfin_user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieves favorite items from the Jellyfin API for a specific user.
 
         Args:
-            jellyfin_user_id (str): The ID of the Jellyfin user.
+            user_id (str): The ID of the Jellyfin user.
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
 
         Returns:
             Optional[List[Dict[str, Any]]]: A list of favorite items (dictionaries) 
                                              from the Jellyfin API, or None on error.
         """
+        current_limit = limit if limit is not None else self.limit
         try:
-            if not self.jellyfin_url or not self.jellyfin_api_key or not jellyfin_user_id:
+            if not self.jellyfin_url or not self.jellyfin_api_key or not user_id:
                 self.logger.error("Jellyfin URL, API Key, and User ID are required for get_favorites.")
                 return None
 
-            endpoint = urljoin(self.jellyfin_url, f"/Users/{jellyfin_user_id}/Items")
+            endpoint = urljoin(self.jellyfin_url, f"/Users/{user_id}/Items")
             headers = {
                 "Authorization": self.jellyfin_auth,
                 "Content-Type": "application/json",
@@ -154,7 +166,7 @@ class Jellyfin:
             params = {
                 "Limit": limit,
                 "Recursive": "true",
-                "Fields": "BasicSyncInfo,MediaSource", # Adjust fields as needed for favorites
+                "Fields": "BasicSyncInfo,MediaSource,UserData", # Ensure UserData is fetched
                 "IncludeItemTypes": "Movie,Series", # Add or remove types as needed
                 "IsFavorite": "true",
                 "SortBy": "SortName", # Or DateCreated, CommunityRating, etc.
@@ -175,21 +187,24 @@ class Jellyfin:
             self.logger.exception(f"An unexpected error occurred in get_favorites: {e}")
         return None
 
-    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], item_type: Optional[any] = None, attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Any:
+    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
         """
         Filters recently watched items, ensuring uniqueness by media name (movie or series)
         and updating to the most recent last_played_date if duplicates are found.
         For episodes, it consolidates them under their series name.
+        The source_type parameter is not strictly used by Jellyfin's current filtering logic
+        but is included for compatibility with the base class.
 
         Args:
             items (Optional[List[Dict[str, Any]]]): 
                 List of raw item dictionaries from Jellyfin's get_recently_watched. 
                 Can be None or empty.
+            attribute_filter (Optional[str]): If 'Name', returns a list of names. Otherwise, List[ItemsFiltered].
+            source_type (Optional[str]): Hint about the origin of items (e.g., 'history', 'favorites'). Not actively used in current Jellyfin logic.
 
         Returns:
-            List[ItemsFiltered]: 
-                A list of processed media items as ItemsFiltered objects.
-                Returns an empty list if input items is None or empty.
+            Union[List[ItemsFiltered], List[str]]: 
+                A list of processed media items or names. Returns an empty list if input is None or empty.
         """
         if not items:
             self.logger.warning("No items provided for filtering. Returning empty list.")
@@ -257,12 +272,12 @@ class Jellyfin:
                 #self.logger.debug(f"Added new media '{media_name}' (Type: {output_media_type}, ID: {media_id}) with last_played_date {current_last_played_date_str}")
 
         if attribute_filter:
-            # If attribute_filter is provided, filter the processed media map by that attribute
-            names = [getattr(item, attribute_filter.lower(), "") for item in processed_media_map.values()]
-            return names
-            #return ",".join(names)
-        else:
-            return list(processed_media_map.values()) 
+            # If attribute_filter is 'Name' (case-insensitive for safety), return list of names
+            if attribute_filter.lower() == "name":
+                return [item.name for item in processed_media_map.values() if item.name]
+            # Potentially handle other attribute_filters here if needed, or log warning
+            self.logger.warning(f"Unsupported attribute_filter '{attribute_filter}' for Jellyfin. Returning full objects.")
+        return list(processed_media_map.values())
     
     def get_all_items(self) -> Optional[List[Dict[str, Any]]]:
         """
@@ -297,17 +312,14 @@ class Jellyfin:
             self.logger.exception(f"An unexpected error occurred in get_all_items: {e}")
         return None
 
-    def get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[List[Any]]:
+    def get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[Union[List[ItemsFiltered], List[str]]]:
         """
-        Filters items by the "Type" field. Supports single or multiple types.
+        Retrieves all relevant items (e.g., movies, shows) from the library and filters them.
 
         Args:
-            items (list): List of item dictionaries.
-            item_type (str or list): The value(s) to filter by in the "Type" field.
-            to_string (bool): If True, return a comma-delimited string of item names; if False, return full item dicts.
-
+            attribute_filter (Optional[str]): If 'Name', returns a list of names. Otherwise, List[ItemsFiltered].
         Returns:
-            list or str: Filtered list of items or a comma-delimited string of item names.
+            Optional[Union[List[ItemsFiltered], List[str]]]: Filtered items or None on error.
         """
         items = self.get_all_items()
         self.logger.debug(f"Retrieved {len(items) if items else 0} items from Jellyfin.")

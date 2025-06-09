@@ -2,8 +2,8 @@ import requests
 import json
 import logging
 from typing import Optional, Dict, List, Any, Union
-from datetime import datetime, timezone
-from .models import ItemsFiltered
+from datetime import datetime, timezone, timedelta
+from services.models import ItemsFiltered
 
 # Import plexapi
 from plexapi.server import PlexServer
@@ -12,6 +12,7 @@ from plexapi.utils import toJson
 from plexapi.media import Media # For type hinting if needed
 from plexapi.video import Movie, Show, Episode, MovieHistory, EpisodeHistory
 from plexapi.server import SystemAccount
+from providers.library_provider_base import LibraryProviderBase # Import the base class
 
 
 # Helper function to convert datetime object to ISO 8601 string
@@ -26,10 +27,19 @@ def _datetime_to_iso(dt: Optional[datetime]) -> Optional[str]:
         dt = dt.astimezone(timezone.utc)
     return dt.isoformat().replace("+00:00", "Z")
 
-class Plex:
+# Helper function to convert epoch timestamp to ISO 8601 string
+def _epoch_to_iso(epoch_timestamp: Optional[Union[int, float]]) -> Optional[str]:
+    if epoch_timestamp is None:
+        return None
+    # Ensure it's treated as seconds. Plex usually provides seconds.
+    dt_object = datetime.fromtimestamp(epoch_timestamp, tz=timezone.utc)
+    return dt_object.isoformat().replace("+00:00", "Z")
+
+class Plex(LibraryProviderBase):
     """
     A class to interact with the Plex API for user and media data using the plexapi library.
     """
+    PROVIDER_NAME = "plex"
 
     def __init__(self, plex_url: str, plex_token: str, limit: int = 10):
         """
@@ -61,6 +71,11 @@ class Plex:
             self.logger.error(f"Failed to initialize Plex server connection to {self.plex_url}: {e}", exc_info=True)
             self.server = None
 
+    @property
+    def name(self) -> str:
+        """Returns the name of the library provider."""
+        return self.PROVIDER_NAME
+
     def get_users(self) -> Optional[List[Dict[str, Any]]]:
         """
         Get all managed Plex accounts (users under the main account).
@@ -87,7 +102,7 @@ class Plex:
             self.logger.error(f"Error fetching Plex users: {e}", exc_info=True)
             return None
 
-    def get_user_by_name(self, plex_username: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Looks up a managed Plex user account ID using the provided username.
 
@@ -97,79 +112,72 @@ class Plex:
         users = self.get_users() # This already returns list of dicts
         if users:
             for user_dict in users:
-                if user_dict.get("name") == plex_username:
+                if user_dict.get("name") == username:
                     return user_dict
-        self.logger.info(f"User '{plex_username}' not found among managed accounts.")
+        self.logger.info(f"User '{username}' not found among managed accounts.")
         return None
 
-    def get_recently_watched(self, plex_user_id: str, limit: Optional[int] = None, to_json_output: bool = False) -> Optional[List[Any]]:
+    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieves recently watched items from Plex for a specific user ID.
+        Conforms to LibraryProviderBase, returning List[Dict[str, Any]].
 
         Args:
-            plex_user_id (str): The ID of the Plex user (from /accounts).
+            user_id (str): The ID of the Plex user (from /accounts).
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
-            to_json_output (bool, optional): If True, returns a list of dictionaries. 
-                                             Otherwise, returns a list of plexapi objects. Defaults to False.
 
         Returns:
-            Optional[List[Any]]: A list of recently watched items.
-                                 If to_json_output is True, List[Dict[str, Any]].
-                                 Otherwise, List[plexapi.video.MovieHistory or plexapi.video.EpisodeHistory].
+            Optional[List[Dict[str, Any]]]: A list of recently watched items as dictionaries.
                                  Returns None on error or if server not connected.
         """
         if not self.server:
             self.logger.warning("Plex server not connected. Cannot get recently watched.")
             return None
-        if not plex_user_id:
+        if not user_id:
             self.logger.error("Plex User ID is required for get_recently_watched.")
             return None
         
         try:
-            user_id_int = int(plex_user_id)
+            user_id_int = int(user_id)
         except ValueError:
-            self.logger.error(f"Invalid Plex User ID format: {plex_user_id}. Must be an integer.")
+            self.logger.error(f"Invalid Plex User ID format: {user_id}. Must be an integer.")
             return None
 
         current_limit = limit if limit is not None else self.limit
         
         try:
             history_items: List[Media] = self.server.history(accountID=user_id_int, maxresults=current_limit)
-            #self.logger.debug(f"{pprint(history_items)}")
             
             watched_videos = [item for item in history_items if isinstance(item, (MovieHistory, EpisodeHistory))]
-            if to_json_output:
-                return json.loads(toJson(watched_videos)) if watched_videos else []
-            return watched_videos
+            # Convert to JSON-like dictionaries as expected by the base class
+            return json.loads(toJson(watched_videos)) if watched_videos else []
+
         except NotFound:
-            self.logger.info(f"No watch history found for user ID {plex_user_id}.")
+            self.logger.info(f"No watch history found for user ID {user_id}.")
             return [] # Return empty list for NotFound, consistent for both output types
         except Exception as e:
-            self.logger.error(f"Error fetching recently watched for user ID {plex_user_id}: {e}", exc_info=True)
+            self.logger.error(f"Error fetching recently watched for user ID {user_id}: {e}", exc_info=True)
             return None
     
-    def get_favorites(self, plex_user_id: str, limit: Optional[int] = None, to_json_output: bool = False) -> Optional[List[Any]]:
+    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieves "favorite" items (highly rated: 9 or 10 out of 10) for the user associated with the token.
         The plex_user_id is for logging/context, as ratings are tied to the token owner.
+        Conforms to LibraryProviderBase, returning List[Dict[str, Any]].
 
         Args:
-            plex_user_id (str): The ID of the Plex user (for context).
+            user_id (str): The ID of the Plex user (for context).
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
-            to_json_output (bool, optional): If True, returns a list of dictionaries. 
-                                             Otherwise, returns a list of plexapi objects. Defaults to False.
 
         Returns:
-            Optional[List[Any]]: List of "favorite" items.
-                                 If to_json_output is True, List[Dict[str, Any]].
-                                 Otherwise, List[plexapi.video.Movie or plexapi.video.Show].
+            Optional[List[Dict[str, Any]]]: List of "favorite" items as dictionaries.
                                  Returns None on error or server not connected.
         """
         if not self.server:
             self.logger.warning("Plex server not connected. Cannot get favorites.")
             return None
             
-        self.logger.info(f"Fetching favorites (highly rated items) for user context (token dependent). User ID hint: {plex_user_id}")
+        self.logger.info(f"Fetching favorites (highly rated items) for user context (token dependent). User ID hint: {user_id}")
         current_limit = limit if limit is not None else self.limit
         favorites: List[Union[Movie, Show]] = []
 
@@ -189,24 +197,25 @@ class Plex:
                     if len(favorites) >= current_limit:
                         break 
             result_favorites = favorites[:current_limit]
-            if to_json_output:
-                return json.loads(toJson(result_favorites)) if result_favorites else []
-            return result_favorites
+            # Convert to JSON-like dictionaries as expected by the base class
+            return json.loads(toJson(result_favorites)) if result_favorites else []
         except Exception as e:
             self.logger.error(f"Error fetching favorites: {e}", exc_info=True)
             return None
 
-    def get_items_filtered(self, items: Optional[List[Any]], source_type: str = "library", attribute_filter: Optional[str] = None) -> Any:
+    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], source_type: str = "library", attribute_filter: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
         """
-        Filters Plex items (plexapi objects), consolidating episodes under series and ensuring uniqueness.
+        Filters Plex items (dictionaries from JSON), consolidating episodes under series and ensuring uniqueness.
         Updates to the most recent last_played_date if duplicates are found (for history source).
+        Conforms to LibraryProviderBase.
 
         Args:
-            items (Optional[List[Any]]): List of raw plexapi objects (e.g., Movie, Show, EpisodeHistory, MovieHistory).
+            items (Optional[List[Dict[str, Any]]]): List of raw Plex item dictionaries (from toJson utility).
             source_type (str): Describes the origin of items ('history', 'library_favorites', 'library_all').
-                               'history' expects items to be MovieHistory or EpisodeHistory.
-                               'library_favorites' or 'library_all' expects Movie or Show.
+                               'history' expects items to be JSON of MovieHistory or EpisodeHistory.
+                               'library_favorites' or 'library_all' expects JSON of Movie or Show.
             attribute_filter (Optional[str]): If 'name', returns a list of names. Otherwise, List[ItemsFiltered].
+
 
         Returns:
             Union[List[ItemsFiltered], List[str]]: Filtered items. Empty list if input is None/empty.
@@ -226,41 +235,48 @@ class Plex:
             play_count_val: Optional[int] = None
             is_favorite_val: Optional[bool] = None
             
+            # Determine item type from dictionary keys (based on plexapi.utils.toJson output)
+            item_type_from_dict = item.get('type') # 'movie', 'show', 'episode'
+
             if source_type == "history":
-                # Item is plexapi.video.Movie or plexapi.video.Episode
-                if isinstance(item, EpisodeHistory):
-                    media_name = item.grandparentTitle
-                    consolidated_media_id = str(item.grandparentRatingKey)
+                # Item is JSON of MovieHistory or EpisodeHistory
+                if item_type_from_dict == 'episode': # From EpisodeHistory
+                    media_name = item.get('grandparentTitle')
+                    consolidated_media_id = str(item.get('grandparentRatingKey'))
                     output_media_type = "tv"
-                    current_last_played_date_iso = _datetime_to_iso(item.viewedAt)
-                elif isinstance(item, MovieHistory):
-                    media_name = item.title
-                    consolidated_media_id = str(item.ratingKey)
+                    current_last_played_date_iso = _epoch_to_iso(item.get('viewedAt'))
+                elif item_type_from_dict == 'movie': # From MovieHistory
+                    media_name = item.get('title')
+                    consolidated_media_id = str(item.get('ratingKey'))
                     output_media_type = "movie"
-                    current_last_played_date_iso = _datetime_to_iso(item.viewedAt)
+                    current_last_played_date_iso = _epoch_to_iso(item.get('viewedAt'))
                 else:
-                    self.logger.debug(f"Skipping history item with unhandled plexapi type '{type(item).__name__}': {getattr(item, 'title', 'Unknown Item')}")
+                    self.logger.debug(f"Skipping history item with unhandled dict type '{item_type_from_dict}': {item.get('title', 'Unknown Item')}")
                     continue
             
             elif source_type in ["library_favorites", "library_all"]:
-                # Item is plexapi.video.Movie or plexapi.video.Show
-                if isinstance(item, Show):
-                    media_name = item.title
-                    consolidated_media_id = str(item.ratingKey)
+                # Item is JSON of Movie or Show
+                if item_type_from_dict == 'show':
+                    media_name = item.get('title')
+                    consolidated_media_id = str(item.get('ratingKey'))
                     output_media_type = "tv"
-                elif isinstance(item, Movie):
-                    media_name = item.title
-                    consolidated_media_id = str(item.ratingKey)
+                elif item_type_from_dict == 'movie':
+                    media_name = item.get('title')
+                    consolidated_media_id = str(item.get('ratingKey'))
                     output_media_type = "movie"
                 else:
-                    self.logger.debug(f"Skipping library item with unhandled plexapi type '{type(item).__name__}': {getattr(item, 'title', 'Unknown Item')}")
+                    self.logger.debug(f"Skipping library item with unhandled dict type '{item_type_from_dict}': {item.get('title', 'Unknown Item')}")
                     continue
 
-                play_count_val = item.viewCount if hasattr(item, 'viewCount') else None
-                if hasattr(item, 'userRating') and item.userRating is not None:
-                    is_favorite_val = item.userRating >= 9.0
-                if hasattr(item, 'lastViewedAt'):
-                     current_last_played_date_iso = _datetime_to_iso(item.lastViewedAt)
+                play_count_val = item.get('viewCount')
+                user_rating = item.get('userRating')
+                if user_rating is not None:
+                    try:
+                        is_favorite_val = float(user_rating) >= 9.0
+                    except ValueError:
+                        self.logger.warning(f"Could not parse userRating '{user_rating}' as float for item '{media_name}'.")
+                
+                current_last_played_date_iso = _epoch_to_iso(item.get('lastViewedAt'))
             else:
                 self.logger.warning(f"Unknown source_type for Plex item filtering: {source_type}")
                 continue
@@ -294,17 +310,13 @@ class Plex:
         else:
             return list(processed_media_map.values())
 
-    def get_all_items(self, to_json_output: bool = False) -> Optional[List[Any]]:
+    def _get_all_items_raw(self) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieves all movie and TV show (series) items from the Plex library.
+        Internal helper to fetch items and convert them to JSON dictionaries.
 
-        Args:
-            to_json_output (bool, optional): If True, returns a list of dictionaries. 
-                                             Otherwise, returns a list of plexapi objects. Defaults to False.
         Returns:
-            Optional[List[Any]]: List of all movie and show items.
-                                 If to_json_output is True, List[Dict[str, Any]].
-                                 Otherwise, List[plexapi.video.Movie or plexapi.video.Show].
+            Optional[List[Dict[str, Any]]]: List of all movie and show items as dictionaries.
                                  Returns None on error or server not connected.
         """
         if not self.server:
@@ -321,34 +333,26 @@ class Plex:
                     self.logger.debug(f"Fetching all shows from section: {section.title}")
                     all_media_items.extend(section.all()) # type: ignore # section.all() returns List[Show]
             
-            if to_json_output:
-                return json.loads(toJson(all_media_items)) if all_media_items else []
-            return all_media_items
+            return json.loads(toJson(all_media_items)) if all_media_items else []
         except Exception as e:
             self.logger.error(f"Error fetching all items from Plex library: {e}", exc_info=True)
             return None
 
-    def get_all_items_filtered(self, attribute_filter: Optional[str] = None, to_json_output: bool = False) -> Optional[List[Any]]:
+    def get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[Union[List[ItemsFiltered], List[str]]]:
         """
-        Retrieves all movie/show items from Plex and filters them using get_items_filtered.
+        Retrieves all movie/show items from Plex as dictionaries and filters them.
+        Conforms to LibraryProviderBase.
 
         Args:
             attribute_filter (Optional[str]): If 'name', returns a list of names. 
                                               Otherwise, list of ItemsFiltered.
-
         Returns:
-            Optional[List[Any]]: Filtered list (ItemsFiltered or str names) or None on error.
+            Optional[Union[List[ItemsFiltered], List[str]]]: Filtered list or None on error.
         """
-        # Always fetch raw plex objects for filtering, regardless of any to_json_output on this method
-        raw_plex_objects = self.get_all_items(to_json_output=False) 
-        
-        if raw_plex_objects is None: 
+        raw_plex_item_dicts = self._get_all_items_raw()
+        if raw_plex_item_dicts is None:
             self.logger.warning("No items returned from Plex library (error state or not connected) for get_all_items_filtered.")
             return None
         
-        self.logger.debug(f"Retrieved {len(raw_plex_objects)} raw plexapi objects from library for filtering.")
-        raw_plex_objects_filtered = self.get_items_filtered(items=raw_plex_objects, source_type="library_all", attribute_filter=attribute_filter)
-        if to_json_output:
-            return json.loads(toJson(raw_plex_objects_filtered)) if raw_plex_objects_filtered else []
-        else: 
-            return raw_plex_objects_filtered
+        self.logger.debug(f"Retrieved {len(raw_plex_item_dicts)} raw Plex item dictionaries from library for filtering.")
+        return self.get_items_filtered(items=raw_plex_item_dicts, source_type="library_all", attribute_filter=attribute_filter)

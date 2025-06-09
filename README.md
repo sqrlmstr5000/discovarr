@@ -166,9 +166,8 @@ services:
 - TMDB_API_KEY=your_tmdb_api_key
 ```
 
-## Logo
+## Style
 ```
-Create a square logo with a pirate ship floating in the sea, it's night time with a starry sky and a full moon. There should be a letter D with the bow of the boat following the curve of the letter D. The image should have a transparent background with a white image. 
-
-3 complexity 
+Logo
+#FBBF24
 ```
