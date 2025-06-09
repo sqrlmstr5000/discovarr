@@ -1,6 +1,4 @@
 #!/bin/sh
-set -e # Exit immediately if a command exits with a non-zero status.
-
 # --- PUID/PGID Runtime Configuration ---
 # Use environment variables PUID and PGID, with defaults if not set.
 # These defaults should ideally match the ones used at build time if no runtime vars are provided.
