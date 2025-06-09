@@ -59,9 +59,11 @@ class Discovarr:
         self.radarr_url = None
         self.radarr_api_key = None
         self.radarr_default_quality_profile_id = None
+        self.radarr_root_dir_path = None
         self.sonarr_url = None
         self.sonarr_api_key = None
         self.sonarr_default_quality_profile_id = None
+        self.sonarr_root_dir_path = None
         self.gemini_enabled = None 
         self.gemini_api_key = None
         self.gemini_model = None
@@ -118,9 +120,11 @@ class Discovarr:
         self.radarr_url = self.settings.get("radarr", "url")
         self.radarr_api_key = self.settings.get("radarr", "api_key")
         self.radarr_default_quality_profile_id = self.settings.get("radarr", "default_quality_profile_id")
+        self.radarr_root_dir_path = self.settings.get("radarr", "root_dir_path")
         self.sonarr_url = self.settings.get("sonarr", "url")
         self.sonarr_api_key = self.settings.get("sonarr", "api_key")
         self.sonarr_default_quality_profile_id = self.settings.get("sonarr", "default_quality_profile_id")
+        self.sonarr_root_dir_path = self.settings.get("sonarr", "root_dir_path")
         self.gemini_enabled = self.settings.get("gemini", "enabled") 
         self.gemini_api_key = self.settings.get("gemini", "api_key")
         self.gemini_model = self.settings.get("gemini", "model")
@@ -683,7 +687,7 @@ class Discovarr:
                 self.settings.set("radarr", "default_quality_profile_id", quality_profile_id)
                 # self.radarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.radarr.add_movie(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.test_mode)
+            request = self.radarr.add_movie(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.test_mode, root_dir_path=self.radarr_root_dir_path)
             self.logger.debug(f"Radarr Add Movie Response: {json.dumps(request.data, indent=2)}")
         elif media_type == "tv":
             if not actual_quality_profile_id_to_use: # Handles None or 0
@@ -694,7 +698,7 @@ class Discovarr:
                 self.settings.set("sonarr", "default_quality_profile_id", quality_profile_id)
                 # self.sonarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.sonarr.add_series(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.test_mode)
+            request = self.sonarr.add_series(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.test_mode, root_dir_path=self.sonarr_root_dir_path)
         else:
             self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
             return None

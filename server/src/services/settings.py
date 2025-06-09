@@ -41,11 +41,13 @@ class SettingsService:
             "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key"},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
+            "root_dir_path": {"value": "/movies", "type": SettingType.STRING, "description": "Root directory path for Radarr"},
         },
         "sonarr": {
             "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key"},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
+            "root_dir_path": {"value": "/tv", "type": SettingType.STRING, "description": "Root directory path for Sonarr"},
         },
         "tmdb": {
             "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API key"},
