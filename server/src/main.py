@@ -329,7 +329,7 @@ async def jellyfin_recently_watched_filtered(
     """
     Endpoint to retrieve recently watched items from the Jellyfin API.
     """
-    return ai_arr.jellyfin_get_recently_watched_filtered(limit)
+    return discovarr.jellyfin_get_recently_watched_filtered(limit)
 
 @api_app.get("/jellyfin/all")
 async def jellyfin_all(
@@ -453,7 +453,7 @@ async def request_media(
     """
     logger.info(f"Requesting media: {tmdb_id} with body: {request_body.model_dump_json(indent=2)}")
     try:
-        # Assuming ai_arr.request_media now returns an APIResponse object
+        # Assuming discovarr.request_media now returns an APIResponse object
         api_response = discovarr.request_media(
             tmdb_id, request_body.media_type, request_body.quality_profile_id, request_body.save_default
         )
@@ -475,7 +475,6 @@ async def request_media(
         # Catch any other unexpected exceptions during the endpoint logic itself
         logger.error(f"Unexpected error in request_media endpoint for {tmdb_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @api_app.get("/test")
 async def test():
@@ -705,7 +704,7 @@ async def preview_search_prompt(
         # The get_prompt method in Discovarr handles the case where request.prompt (template_string) is None
         # by attempting to use self.default_prompt.
         # It also has its own try-except that returns an error message string if rendering fails.
-        rendered_prompt = ai_arr.get_prompt(
+        rendered_prompt = discovarr.get_prompt(
             limit=request.limit,
             media_name=request.media_name,
             template_string=request.prompt,
