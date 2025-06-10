@@ -5,7 +5,7 @@ import sys
 from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Union
 from services.models import ItemsFiltered
-from providers.library_provider_base import LibraryProviderBase # Import the base class
+from base.library_provider_base import LibraryProviderBase # Import the base class
 
 class Jellyfin(LibraryProviderBase):
     """

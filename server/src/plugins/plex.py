@@ -12,7 +12,7 @@ from plexapi.utils import toJson
 from plexapi.media import Media # For type hinting if needed
 from plexapi.video import Movie, Show, Episode, MovieHistory, EpisodeHistory
 from plexapi.server import SystemAccount
-from providers.library_provider_base import LibraryProviderBase # Import the base class
+from base.library_provider_base import LibraryProviderBase # Import the base class
 
 
 # Helper function to convert datetime object to ISO 8601 string

@@ -8,3 +8,5 @@ peewee==3.18.*
 Jinja2
 plexapi
 ollama
+trakt.py
+pytest

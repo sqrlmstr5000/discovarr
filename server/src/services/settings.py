@@ -115,28 +115,38 @@ class SettingsService:
         # Delayed imports to prevent circular dependencies at module load time
         from plugins.gemini import Gemini
         from plugins.ollama import Ollama
-        # Add other LLMProviderBase implementations here
-        # from .openai import OpenAi # Example if OpenAi becomes a provider
+        from plugins.plex import Plex
+        from plugins.jellyfin import Jellyfin
+        from plugins.trakt import TraktProvider
+        # Add other ProviderBase implementations here
 
-        llm_provider_classes = [Gemini, Ollama] 
+        # Define lists of provider classes
+        # Ensure these classes have PROVIDER_NAME and get_default_settings
+        provider_classes_to_load = [
+            Gemini, 
+            Ollama,
+            Plex,
+            Jellyfin,
+            TraktProvider
+        ]
 
         current_default_settings = SettingsService._BASE_DEFAULT_SETTINGS.copy()
-        for provider_class in llm_provider_classes:
+        
+        for provider_class in provider_classes_to_load:
             if not hasattr(provider_class, 'PROVIDER_NAME') or not hasattr(provider_class, 'get_default_settings'):
                 logging.getLogger(__name__).error(
-                    f"Provider class {provider_class.__name__} does not fully implement LLMProviderBase (missing PROVIDER_NAME or get_default_settings)."
+                    f"Provider class {provider_class.__name__} is missing PROVIDER_NAME or get_default_settings static method."
                 )
                 continue
             
             provider_name = provider_class.PROVIDER_NAME
             provider_defaults = provider_class.get_default_settings()
             if provider_name in current_default_settings:
-                logging.getLogger(__name__).warning(f"Provider '{provider_name}' defaults key already exists in base settings. Overwriting.")
+                logging.getLogger(__name__).warning(f"Provider '{provider_name}' defaults key already exists. Overwriting with specifics from {provider_class.__name__}.")
             current_default_settings[provider_name] = provider_defaults
-            logging.getLogger(__name__).info(f"Loaded default settings for LLM provider: {provider_name}")
+            logging.getLogger(__name__).info(f"Loaded default settings for provider: {provider_name}")
         
         SettingsService.DEFAULT_SETTINGS = current_default_settings
-
     def _initialize_settings(self) -> None:
         """
         Create settings in database if they don't exist.
@@ -246,7 +256,9 @@ class SettingsService:
         }
         
         # Build result using DEFAULT_SETTINGS as template
-        for group, group_settings in SettingsService.DEFAULT_SETTINGS.items():
+        # Iterate over sorted group names for alphabetical order
+        for group in sorted(SettingsService.DEFAULT_SETTINGS.keys()):
+            group_settings = SettingsService.DEFAULT_SETTINGS[group]
             if group not in result:
                 result[group] = {}
             for name, config in group_settings.items():

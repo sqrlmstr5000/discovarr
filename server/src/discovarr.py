@@ -19,6 +19,7 @@ from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
 from plugins.plex import Plex
+from plugins.trakt import TraktProvider # Import TraktProvider
 from services.models import ItemsFiltered
 
 class Discovarr:
@@ -74,6 +75,11 @@ class Discovarr:
         self.ollama_model = None # Initialize Ollama setting
         self.ollama_temperature = None # 
         self.tmdb_api_key = None
+        self.trakt_enabled = None
+        self.trakt_client_id = None
+        self.trakt_client_secret = None
+        self.trakt_redirect_uri = None
+        # self.trakt_access_token = None # Access token might be managed via OAuth flow
         self.auto_media_save = None
         self.system_prompt = None 
 
@@ -83,6 +89,7 @@ class Discovarr:
         self.sonarr = None
         self.gemini = None
         self.ollama = None
+        self.trakt = None # Initialize Trakt service instance
         self.tmdb = None
 
         # Load backup setting first as it's needed for Database initialization
@@ -133,6 +140,10 @@ class Discovarr:
         self.ollama_base_url = self.settings.get("ollama", "base_url")
         self.ollama_model = self.settings.get("ollama", "model")
         self.ollama_temperature = self.settings.get("ollama", "temperature")
+        self.trakt_enabled = self.settings.get("trakt", "enabled")
+        self.trakt_client_id = self.settings.get("trakt", "client_id")
+        self.trakt_client_secret = self.settings.get("trakt", "client_secret")
+        self.trakt_redirect_uri = self.settings.get("trakt", "redirect_uri")
         self.tmdb_api_key = self.settings.get("tmdb", "api_key")
         self.system_prompt = self.settings.get("app", "system_prompt")
         
@@ -152,6 +163,7 @@ class Discovarr:
         # (Re)Initialize services with the new configuration
         self.plex = None # Reset before potential re-init
         self.jellyfin = None # Reset before potential re-init
+        self.trakt = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_token:
              self.plex = Plex(
@@ -201,6 +213,19 @@ class Discovarr:
         else:
             self.logger.info("Ollama integration is disabled.")
 
+        if self.trakt_enabled and self.trakt_client_id and self.trakt_client_secret:
+            # TODO: Implement OAuth flow to get access_token if not already stored/provided
+            # For now, assuming access_token might be None or manually set in config for testing
+            # access_token = self.settings.get("trakt", "access_token") # Example if stored
+            self.trakt = TraktProvider(
+                client_id=self.trakt_client_id,
+                client_secret=self.trakt_client_secret,
+                redirect_uri=self.trakt_redirect_uri,
+                discovarr_app=self # Pass the Discovarr instance
+            )
+            self.logger.info("Trakt service initialized.")
+        else:
+            self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
         self.logger.info("Discovarr configuration processed and services (re)initialized.")
 
@@ -231,6 +256,12 @@ class Discovarr:
         if self.ollama_enabled:
             if not self.ollama_base_url:
                 raise ValueError("Ollama Base URL is required when Ollama integration is enabled.")
+        
+        if self.trakt_enabled:
+            if not self.trakt_client_id:
+                raise ValueError("Trakt Client ID is required when Trakt integration is enabled.")
+            if not self.trakt_client_secret:
+                raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
  
     # --- Plex Methods ---
     def plex_get_users(self) -> Optional[List[Dict[str, Any]]]:

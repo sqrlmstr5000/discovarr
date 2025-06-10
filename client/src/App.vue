@@ -74,7 +74,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="fixed w-full h-screen bg-black">
+  <div
+    class="w-full h-screen bg-black"
+    :class="{
+      'flex': !isMobile, // Apply flex layout for desktop view
+      'fixed': true      // Keep the root container fixed for overall page structure
+    }"
+  >
     <!-- Mobile Top Bar -->
     <div
       v-if="isMobile"
@@ -98,9 +104,13 @@ onBeforeUnmount(() => {
 
     <div 
       id="SideNav" 
-      class="h-screen bg-gray-900 border-r border-gray-700 select-none transition-transform duration-300 ease-in-out flex items-start"
-      :class="[ isMobile ? `fixed top-0 left-0 w-[65px] z-50 ${isMobileNavOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}` : 'relative w-[65px] flex-shrink-0 z-40']">
-      <div class="w-full flex flex-col items-center pt-4 space-y-1"> 
+      class="bg-gray-900 border-r border-gray-700 select-none transition-transform duration-300 ease-in-out flex items-start"
+      :class="[ 
+        isMobile 
+          ? `fixed top-0 left-0 w-[65px] h-screen z-50 ${isMobileNavOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}` 
+          : 'relative w-[65px] flex-shrink-0 z-40 h-full'
+      ]">
+      <div class="w-full flex flex-col items-center pt-4 space-y-1 h-full"> 
         <!-- Logo -->
         <div class="mb-5 px-2">
           <img
@@ -156,9 +166,11 @@ onBeforeUnmount(() => {
 
     <!-- Main Content Area -->
     <div 
-      class="fixed h-full bg-black transition-all duration-300 ease-in-out z-20"
+      class="bg-black transition-all duration-300 ease-in-out z-20"
       :class="[
-        isMobile ? 'top-14 left-0 w-full h-[calc(100%-56px)] overflow-y-auto' : 'top-0 left-[65px] w-[calc(100%-65px)] right-0 overflow-hidden' // 56px = h-14
+        isMobile 
+          ? 'fixed top-14 left-0 w-full h-[calc(100%-56px)] overflow-y-auto' 
+          : 'flex-1 h-full overflow-y-auto' // Desktop: flex-grow, full height, scrollable
       ]"
     >
       <router-view 
@@ -167,6 +179,5 @@ onBeforeUnmount(() => {
       />
     </div>
     <GlobalToast />
-
   </div>
 </template>

@@ -107,6 +107,11 @@ LOGGING_CONFIG = {
             'level': loglevel,
             'propagate': False
         },
+        'traktprovider': {
+            'handlers': ['default'],
+            'level': loglevel,
+            'propagate': False
+        },
     },
 }
 
