@@ -493,8 +493,14 @@ class Discovarr:
                     tmdb_id = tmdb_lookup.get("id")
                     # Get media details from TMDB
                     tmdb_media_detail = self.tmdb.get_media_detail(tmdb_id, media_type)
+
                     # Get poster art from TMDB
-                    image_url =  f"https://image.tmdb.org/t/p/w500{tmdb_media_detail.get('poster_path')}" 
+                    poster_url = None
+                    poster_url_source =  f"https://image.tmdb.org/t/p/w500{tmdb_media_detail.get('poster_path')}" 
+                    # Ensure we have a URL and an ID for caching. Only save to cache if necessary.
+                    if poster_url_source and tmdb_id and (self.auto_media_save or search_id): 
+                        poster_url = await self._cache_image_if_needed(poster_url_source, "media", tmdb_id)
+
                     # Data validation
                     rt_score = media.get("rt_score")
                     if rt_score and isinstance(rt_score, str):
@@ -525,7 +531,8 @@ class Discovarr:
                             "similarity": media.get("similarity"),
                             "media_type": media_type,
                             "tmdb_id": tmdb_id,
-                            "poster_url": image_url,
+                            "poster_url": poster_url,
+                            "poster_url_source": poster_url_source,
                             "rt_url": media.get("rt_url"),
                             "rt_score": rt_score,
                             "ignore": 0,  # Default to not ignored
@@ -554,7 +561,8 @@ class Discovarr:
                             "similarity": media.get("similarity"),
                             "media_type": media_type,
                             "tmdb_id": tmdb_id,
-                            "poster_url": image_url,
+                            "poster_url": poster_url,
+                            "poster_url_source": poster_url_source,
                             "rt_url": media.get("rt_url"),
                             "rt_score": rt_score,
                             "media_status": tmdb_media_detail.get("status"),
@@ -711,7 +719,7 @@ class Discovarr:
                     else:
                         self.logger.warning(f"Could not find poster URL from TMDB for '{item.name}' (ID: {item.id}).")
                 
-                final_poster_url = url_to_cache # Default to original or TMDB fetched URL
+                final_poster_url = None 
                 # Cache the poster image (if a URL exists) and get the local/cached path
                 if url_to_cache and item.id: # Ensure we have a URL and an ID for caching
                     final_poster_url = await self._cache_image_if_needed(url_to_cache, source, item.id)
@@ -722,7 +730,8 @@ class Discovarr:
                     media_type=item.type,
                     watched_by=user_name,
                     last_played_date=item.last_played_date,
-                    poster_url=final_poster_url
+                    poster_url=final_poster_url,
+                    poster_url_source=url_to_cache
                 )
                 
             self.logger.info(f"Synced and added/updated {len(unique_items)} unique recently watched title(s) for {user_name} from {source}.")

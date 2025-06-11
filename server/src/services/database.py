@@ -247,7 +247,7 @@ class Database:
             self.logger.error(f"Error deleting media entry by TMDB ID {tmdb_id}: {e}")
             return False
 
-    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str, poster_url: Optional[str] = None) -> bool:
+    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str, poster_url: Optional[str] = None, poster_url_source: Optional[str] = None) -> bool:
         """
         Add or update a watch history entry.
         Assumes WatchHistory model has fields for media_jellyfin_id and media_type.
@@ -300,6 +300,7 @@ class Database:
                 existing_entry.media_id = id # This is either the TMDB or JellyfinID
                 existing_entry.updated_at = datetime.now()
                 existing_entry.poster_url = poster_url
+                existing_entry.poster_url_source = poster_url_source
                 existing_entry.save()
                 self.logger.info(f"Successfully updated watch history for '{title}' (ID: {id}) by {watched_by}")
             else:
@@ -309,7 +310,8 @@ class Database:
                     media_type=media_type,
                     watched_by=watched_by,
                     last_played_date=dt_last_played_date_utc,
-                    poster_url=poster_url
+                    poster_url=poster_url,
+                    poster_url_source=poster_url_source,
                 )
                 self.logger.info(f"Successfully added new watch history for '{title}' (ID: {id}) by {watched_by}")
             return True

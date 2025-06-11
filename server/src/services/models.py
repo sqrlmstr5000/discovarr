@@ -59,6 +59,7 @@ class Media(PeeweeBaseModel):
     rt_url = CharField(null=True)
     rt_score = IntegerField(null=True)
     poster_url = CharField(null=True)
+    poster_url_source = CharField(null=True)
     media_status = CharField(null=True) # e.g., Rumored, Planned, In Production, Post Production, Released, Canceled
     release_date = DateField(null=True)
     networks = TextField(null=True) 
@@ -76,6 +77,7 @@ class WatchHistory(PeeweeBaseModel):
     watched_by = CharField(null=False)
     last_played_date = DateTimeField(null=False)
     poster_url = CharField(null=True)
+    poster_url_source = CharField(null=True)
     processed = BooleanField(default=False)
     processed_at = DateTimeField(null=True)
     created_at = DateTimeField(default=datetime.now)

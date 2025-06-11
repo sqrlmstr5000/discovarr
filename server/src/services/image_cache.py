@@ -12,13 +12,12 @@ class ImageCacheService:
     A service to download and cache images locally.
     """
 
-    def __init__(self, cache_base_dir: str = "/cache"):
+    def __init__(self, cache_base_dir: str = "/cache/image"):
         """
         Initializes the ImageCacheService.
 
         Args:
             cache_base_dir (str): The base directory where images will be cached.
-                                  Defaults to "/cache".
         """
         self.logger = logging.getLogger(__name__)
         self.cache_base_dir = Path(cache_base_dir)

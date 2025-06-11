@@ -169,7 +169,7 @@ watch(() => props.movie, (newMovie, oldMovie) => {
         // Handle image loading
         if (newMovie.poster_url) {
             imageLoading.value = true; // Set to true to show placeholder before new image loads
-            currentImageSrc.value = newMovie.poster_url;
+            currentImageSrc.value = `${config.apiUrl.replace(/\/api$/, '')}/cache/image/${newMovie.poster_url}`;
         } else {
             imageLoading.value = false; // No poster, show placeholder image directly
             currentImageSrc.value = placeholderImage;

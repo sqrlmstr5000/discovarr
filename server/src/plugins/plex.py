@@ -227,7 +227,7 @@ class PlexProvider(LibraryProviderBase):
             Union[List[ItemsFiltered], List[str]]: Filtered items. Empty list if input is None/empty.
         """
         if not items:
-            self.logger.debug(f"No Plex items provided for filtering (source: {source_type}). Returning empty list.")
+            self.logger.debug(f"No Plex items provided for filtering. Returning empty list.")
             return []
 
         processed_media_map: Dict[str, ItemsFiltered] = {}
@@ -243,6 +243,7 @@ class PlexProvider(LibraryProviderBase):
             poster_url_val: Optional[str] = None
             thumb_path: Optional[str] = None
             
+            self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
             # Determine item type from dictionary keys (based on plexapi.utils.toJson output)
             item_type_from_dict = item.get('type') # 'movie', 'show', 'episode'
 
@@ -252,7 +253,13 @@ class PlexProvider(LibraryProviderBase):
                 consolidated_media_id = str(key.split('/')[-1]) 
                 output_media_type = "tv" 
                 thumb_path = item.get('grandparentThumb')
-            elif item_type_from_dict == 'movie': # From MovieHistory
+            elif item_type_from_dict == 'show': 
+                media_name = item.get('title')
+                key = item.get('key')
+                consolidated_media_id = str(key.split('/')[-1]) 
+                output_media_type = "tv"
+                thumb_path = item.get('thumb')
+            elif item_type_from_dict == 'movie': 
                 media_name = item.get('title')
                 key = item.get('key')
                 consolidated_media_id = str(key.split('/')[-1]) 
