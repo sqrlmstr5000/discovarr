@@ -377,7 +377,7 @@ onMounted(async () => { // Make onMounted async
             <a href="#section-application-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2">Application Settings</a>
             <ul class="space-y-1">
               <li v-for="(groupSettings, groupName) in settings" :key="`toc-${groupName}`">
-                <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm">
+                <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
                   {{ groupName.replace(/_/g, ' ') }}
                 </a>
               </li>
@@ -571,6 +571,7 @@ onMounted(async () => { // Make onMounted async
                     <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
                     <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
                     <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
+                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
                   </div>
                 </div>  
 

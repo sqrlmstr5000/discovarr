@@ -72,13 +72,6 @@ class LibraryProviderBase(ABC):
         pass
 
     @abstractmethod
-    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
-        """
-        Filters a list of raw media items, ensuring uniqueness and proper formatting.
-        """
-        pass
-
-    @abstractmethod
     def get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[Union[List[ItemsFiltered], List[str]]]:
         """
         Retrieves all relevant items (e.g., movies, shows) from the library and filters them.

@@ -116,6 +116,9 @@ services:
     environment:
       # Client needs to know where the API is. This will be your host machine IP or hostname since the client is connecting from your browser
       - VITE_DISCOVARR_URL=http://192.168.0.100:8000/api
+    volumes:
+      - ./config:/config
+      - ./cache:/cache
 ```
 
 ### Environment Variables (optional)

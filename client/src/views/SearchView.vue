@@ -12,7 +12,7 @@ import CalendarClock from 'vue-material-design-icons/CalendarClock.vue';
 import InformationOutline from 'vue-material-design-icons/InformationOutline.vue';
 import Send from 'vue-material-design-icons/Send.vue'; // Icon for request button
 import SearchScheduleModal from '../components/SearchScheduleModal.vue'; // Import SearchScheduleModal
-import SearchOptions from '../components/SearchOptions.vue'; 
+import EditMediaNameModal from '../components/EditMediaNameModal.vue'; // Import the new modal
 import RequestModal from '../components/RequestModal.vue'; 
 import { useRouter, useRoute } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
@@ -59,9 +59,9 @@ const savedSearches = ref([]);
 const loadingSavedSearches = ref(false);
 const showRequestModal = ref(false);
 const isPreviewExpanded = ref(false); // For collapsible preview
-const selectedMediaForRequest = ref(null);
 const favoriteOption = ref(''); // For favorite media option
 const editableMediaName = ref('');
+const showEditMediaNameModal = ref(false);
 
 const emit = defineEmits(['close', 'refresh']);
 
@@ -213,6 +213,7 @@ const handlePreview = async () => {
       limit: Number(currentLimit.value) || 5, // Ensure number and provide default
       media_name: editableMediaName.value || null,
     };
+    isPreviewExpanded.value = true; // Expand preview
 
     const response = await fetch(`${config.apiUrl}/search/prompt/preview`, {
       method: 'POST',
@@ -235,7 +236,6 @@ const handlePreview = async () => {
       throw new Error(errorMessage);
     }
     previewResult.value = responseText.result;
-    isPreviewExpanded.value = true; // Expand on successful preview
   } catch (error) {
     console.error('Preview failed:', error);
     previewError.value = error.message || 'Failed to generate preview.';
@@ -406,6 +406,11 @@ const parseJsonString = (jsonString) => {
   }
   return jsonString.split(',').map(s => s.trim()).filter(s => s.length > 0);
 };
+
+const handleUpdateMediaName = (newName) => {
+  editableMediaName.value = newName;
+  // Optionally, trigger preview update or other actions
+};
 </script>
 
 <template>
@@ -440,9 +445,37 @@ const parseJsonString = (jsonString) => {
                 />
             </div>
             <!-- Template Variables Section -->
-            <SearchOptions
-                v-model:editableMediaName="editableMediaName"
-            /> 
+            <div class="p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                <div class="flex items-center mb-2">
+                <h4 class="text-lg text-white font-semibold">Template Variables</h4>
+                <div class="relative flex flex-col items-center group ml-2">
+                    <InformationOutline :size="18" class="text-gray-400 cursor-pointer" />
+                    <div class="absolute bottom-0 flex-col items-center hidden mb-6 group-hover:flex w-auto">
+                    <span class="relative z-10 p-2 text-xs leading-none text-white whitespace-nowrap bg-gray-700 shadow-lg rounded-md">
+                        Use these variables within the prompt template above.
+                    </span>
+                    <div class="w-3 h-3 -mt-2 rotate-45 bg-gray-700"></div>
+                    </div>
+                </div>
+                </div>
+                <div class="flex flex-wrap gap-2 text-sm">
+                  <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Limit suggestions returned from the LLM. Uses settings.app.recent_limit.">limit={{ currentLimit }}</span>
+                  <div class="flex items-center bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Used to associate suggestions with the original source media. Will auto populate when searching based on an existing title.">
+                    <span>media_name="{{ editableMediaName }}"</span>
+                    <!-- Edit Media Name Button -->
+                    <button
+                      type="button"
+                      @click="showEditMediaNameModal = true"
+                      class="ml-2 p-0.5 text-gray-400 hover:text-white focus:outline-none rounded-full hover:bg-gray-600"
+                      title="Edit Media Name">
+                      <Edit :size="14" />
+                    </button>
+                  </div>
+                <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Library items from all Library Providers to exclude from suggestions.">media_exclude=auto</span>
+                <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Favorites from all Library Providers.">favorites=auto</span>
+                <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Watch History from all Library Providers.">watch_history=auto</span>
+                </div>
+            </div>
 
           <!-- Prompt Preview Section -->
           <div v-if="loadingPreview || previewError || previewResult" class="p-4 bg-gray-800 border border-gray-700 rounded-lg">
@@ -725,6 +758,13 @@ const parseJsonString = (jsonString) => {
       :is-default-search="isCurrentSearchDefault"
       @close="showEditModal = false"
       @save="handleEditComplete"
+    />
+
+    <EditMediaNameModal
+      :show="showEditMediaNameModal"
+      :current-media-name="editableMediaName"
+      @close="showEditMediaNameModal = false"
+      @update:mediaName="handleUpdateMediaName"
     />
     </form>
   </div>

@@ -655,6 +655,49 @@ async def get_watch_history_grouped_endpoint(
         logger.error(f"Error getting grouped watch history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@api_app.delete("/watch-history/all")
+async def delete_all_watch_history_endpoint(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Delete all watch history items from the database.
+    """
+    logger.info("Attempting to delete all watch history items.")
+    try:
+        result = discovarr.delete_all_watch_history()
+        if not result.get("success"):
+            # This case is less likely for 'delete all' unless there's a DB connection issue
+            status_code = result.get("status_code", 500)
+            raise HTTPException(status_code=status_code, detail=result.get("message"))
+        return {"status": "success", "message": result.get("message")}
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error deleting all watch history items: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while deleting all watch history items.")
+    
+@api_app.delete("/watch-history/{history_item_id}")
+async def delete_watch_history_item_endpoint(
+    history_item_id: int,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Delete a specific watch history item by its ID.
+    """
+    logger.info(f"Attempting to delete watch history item with ID: {history_item_id}")
+    try:
+        result = discovarr.delete_watch_history_item(history_item_id)
+        if not result.get("success"):
+            status_code = result.get("status_code", 404 if "not found" in result.get("message", "").lower() else 500)
+            raise HTTPException(status_code=status_code, detail=result.get("message"))
+        return {"status": "success", "message": result.get("message")}
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error deleting watch history item {history_item_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while deleting watch history item {history_item_id}.")
+    
 @api_app.get("/media/field/{col_name}")
 async def get_media_field_values(
     col_name: str,

@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.7]() - 2025-06-0x
 ### Added
 - Trakt integration (alpha release)
-- Image caching service using /cache directory
+- Image caching service using /cache directory. Updated entrypoint.sh and Dockerfile. 
+- watch_history template variable to Search
 
 ### Changed
 - Using LibraryProviderBase and LLMProviderBase to standardize providers. Refactored providers.
-- Added Default User Setting to Library providers
+- Added Default User Setting to Library providers. Removed this from the Search page.
+- Plex Provider enhancements
 
 ### Fixed 
 - ai_arr replacements, Closes PR #9

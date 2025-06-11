@@ -394,6 +394,22 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error retrieving watch history for title '{title}' (user: {watched_by}): {e}")
             return None
+        
+    def get_watch_history_item_by_id(self, history_item_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific watch history item by its ID.
+
+        Args:
+            history_item_id (int): The ID of the watch history item.
+
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary representing the watch history item, or None if not found.
+        """
+        try:
+            history_item = WatchHistory.get_by_id(history_item_id)
+            return model_to_dict(history_item)
+        except WatchHistory.DoesNotExist:
+            return None
 
     def get_watch_history(self, limit: Optional[int] = 10, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, processed: Optional[bool] = None) -> List[Dict[str, Any]]:
         """
@@ -424,6 +440,37 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error retrieving watch history: {e}")
             return []
+
+    def delete_watch_history_item(self, history_item_id: int) -> bool:
+        """
+        Deletes a specific watch history item by its primary key ID.
+
+        Args:
+            history_item_id (int): The ID of the watch history item to delete.
+
+        Returns:
+            bool: True if the item was deleted, False otherwise (e.g., not found or error).
+        """
+        try:
+            query = WatchHistory.delete().where(WatchHistory.id == history_item_id)
+            return query.execute() > 0  # Returns the number of rows deleted
+        except Exception as e:
+            self.logger.error(f"Error deleting watch history item with ID {history_item_id}: {e}", exc_info=True)
+            return False
+
+    def delete_all_watch_history(self) -> int:
+        """
+        Deletes all watch history items from the database.
+
+        Returns:
+            int: The number of rows deleted. Returns 0 on error.
+        """
+        try:
+            query = WatchHistory.delete()
+            return query.execute()  # Returns the number of rows deleted
+        except Exception as e:
+            self.logger.error(f"Error deleting all watch history items: {e}", exc_info=True)
+            return 0
 
     def get_unique_media_values_by_field(self, field_name: str) -> List[Any]:
         """

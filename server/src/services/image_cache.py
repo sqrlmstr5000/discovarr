@@ -88,3 +88,30 @@ class ImageCacheService:
         except Exception as e:
             self.logger.error(f"An unexpected error occurred while caching image from {image_url}: {e}", exc_info=True)
         return None
+
+    def delete_cached_image(self, filename: str) -> bool:
+        """
+        Deletes a specific image file from the cache.
+
+        Args:
+            filename (str): The name of the file to delete (e.g., "plex_123.jpg").
+
+        Returns:
+            bool: True if the file was deleted successfully or did not exist, False on error.
+        """
+        if not filename:
+            self.logger.warning("No filename provided for deletion. Skipping.")
+            return True # Consider it success if no action needed
+        
+        local_image_path = self.cache_base_dir / filename
+        if local_image_path.exists():
+            try:
+                local_image_path.unlink()
+                self.logger.info(f"Successfully deleted cached image: {local_image_path}")
+                return True
+            except OSError as e:
+                self.logger.error(f"Failed to delete cached image {local_image_path}: {e}")
+                return False
+        else:
+            self.logger.info(f"Cached image {local_image_path} not found. No deletion needed.")
+            return True

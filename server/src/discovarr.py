@@ -268,87 +268,7 @@ class Discovarr:
                 raise ValueError("Trakt Client ID is required when Trakt integration is enabled.")
             if not self.trakt_client_secret:
                 raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
- 
-    # --- Plex Methods ---
-    def plex_get_users(self) -> Optional[List[LibraryUser]]:
-        """Get all managed Plex users."""
-        if not self.plex:
-            self.logger.warning("Plex service not available.")
-            return None
-        return self.plex.get_users()
-
-    def plex_get_user_by_name(self, username: str) -> Optional[LibraryUser]:
-        if not self.plex:
-            self.logger.warning("Plex service not available.")
-            return None
-        return self.plex.get_user_by_name(username)
-
-    def plex_get_recently_watched(self, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-        """Get recently watched items for the default Plex user."""
-        if not self.plex:
-            self.logger.warning("Plex service not available.")
-            return None
-        # TODO: Make username configurable instead of hardcoding 
-        # For now, assuming the main account token is used or a specific user context is desired.
-        # If using a managed user's token, this would be simpler.
-        # If using main account token and want a specific managed user's history, need their ID.
-        user = self.plex.get_user_by_name("default") # Example, replace "default" make configurable
-        if not user:
-            self.logger.warning("Default Plex user 'default' not found for recently watched. Ensure user exists or configure.")
-            # Fallback: If no specific user, try to get history for the account associated with the token.
-            # Plex's /status/sessions/history/all with `accountID` filters by that account.
-            # If `accountID` is omitted, it might show history for the token's primary account.
-            # For simplicity, we require a user ID here.
-            return None
-        return self.plex.get_recently_watched(plex_user_id=user.get("id"), limit=limit, to_json_output=True)
-
-    def plex_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
-        """Get filtered recently watched items for the default Plex user."""
-        user = self.plex.get_user_by_name("default") # Example, replace "default" or make configurable
-        if not user: # user is now Optional[LibraryUser]
-            self.logger.warning("Default Plex user 'default' not found for recently watched. Ensure user exists or configure.")
-        raw_items = self.plex.get_recently_watched(plex_user_id=user.get("id"), limit=limit, to_json_output=False)
-        if raw_items is None: # Indicates an error during fetch or user not found
-            return None
-        # get_items_filtered handles empty list if no items were returned
-        return self.plex.get_items_filtered(items=raw_items, source_type="history")
-
-    # --- Trakt Methods ---
-    def trakt_authenticate(self) -> Dict[str, Any]:
-        """
-        Initiates the Trakt authentication process.
-        Returns a dictionary with success status, user_code, verification_url, and a message.
-        """
-        if not self.trakt:
-            self.logger.warning("Trakt service not available or not enabled. Cannot authenticate.")
-            return {"success": False, "message": "Trakt service not available or not enabled."}
-        
-        self.logger.info("Attempting to authenticate with Trakt...")
-        # _authenticate in TraktProvider is blocking and handles the flow.
-        # It now returns a dictionary.
-        return self.trakt._authenticate()
-
-    def plex_get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[Union[List[ItemsFiltered], List[str]]]:
-        """Get all filtered library items (movies/shows) from Plex."""
-        if not self.plex:
-            self.logger.warning("Plex service not available.")
-            return None
-        return self.plex.get_all_items_filtered(attribute_filter=attribute_filter)
-
-    def jellyfin_get_recently_watched(self, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-        if not self.jellyfin:
-            self.logger.warning("Jellyfin service not available.")
-            return None
-        user = self.jellyfin.get_user_by_name(self.settings.get("jellyfin", "default_user") or "") # user is now Optional[LibraryUser]
-        return self.jellyfin.get_recently_watched(limit=limit, user_id=user.id) # Access .id
-    
-    def jellyfin_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[str]]:
-        if not self.jellyfin:
-            self.logger.warning("Jellyfin service not available.")
-            return None
-        user = self.jellyfin.get_user_by_name(self.settings.get("jellyfin", "default_user") or "") # user is now Optional[LibraryUser]
-        r = self.jellyfin.get_recently_watched(limit=limit, user_id=user.get("Id"))
-        return self.jellyfin.get_items_filtered(items=r, attribute_filter="Name")
+   
     def get_prompt(self, limit: int, media_name: Optional[str] = None, template_string: Optional[str] = None) -> str:
         """
         Renders a prompt string using Jinja2 templating.
@@ -385,69 +305,92 @@ class Discovarr:
             self.logger.info("Finding similar media for: %s", media_name)
             self.logger.info("Exclude: %s", all_ignored_str)
 
-            # Template variable for favorites
+            # Template variables
             favorites_str = ""
             all_favorites = []
+            watch_history_str = ""
+            all_watch_history = []
 
-            # Fetch Jellyfin favorites
+            # Fetch Jellyfin
             if self.jellyfin:
                 jellyfin_default_user_setting = self.settings.get("jellyfin", "default_user")
                 self.logger.debug(f"Jellyfin default_user setting for favorites: {jellyfin_default_user_setting}")
-                if jellyfin_default_user_setting and jellyfin_default_user_setting.lower() != "all":
+                if jellyfin_default_user_setting:
                     user = self.jellyfin.get_user_by_name(username=jellyfin_default_user_setting)
                     if user:
+                        # Get favorites
                         self.logger.debug(f"Fetching Jellyfin favorites for specific user: {user.name}")
-                        user_favorites_items = self.jellyfin.get_favorites(user_id=user.id) # Returns List[ItemsFiltered]
+                        user_favorites_items = self.jellyfin.get_favorites(user_id=user.id) 
                         if user_favorites_items:
                             user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
                             all_favorites.extend(user_favorites_names)
                             self.logger.debug(f"Jellyfin User {user.name} favorites: {user_favorites_names}")
-                else: # "all" users or no specific user set for Jellyfin
+                    else:
+                        self.logger.warning(f"Jellyfin default user '{jellyfin_default_user_setting}' not found")
+                else: 
                     self.logger.debug("Fetching Jellyfin favorites for all users.")
                     all_jellyfin_users = self.jellyfin.get_users()
                     if all_jellyfin_users:
                         for user_in_loop in all_jellyfin_users:
-                            user_favorites_items = self.jellyfin.get_favorites(user_id=user_in_loop.id) # Returns List[ItemsFiltered]
+                            user_favorites_items = self.jellyfin.get_favorites(user_id=user_in_loop.id) 
                             if user_favorites_items:
                                 user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
                                 self.logger.debug(f"Jellyfin User {user_in_loop.name} favorites: {user_favorites_names}")
                                 all_favorites.extend(user_favorites_names)
 
-            # Fetch Plex favorites
+            # Fetch Plex
             if self.plex:
                 plex_default_user_setting = self.settings.get("plex", "default_user")
                 self.logger.debug(f"Plex default_user setting for favorites: {plex_default_user_setting}")
                 plex_user_context_id_for_api = None
-                plex_user_context_name_for_log = "token owner"
 
-                if plex_default_user_setting and plex_default_user_setting.lower() != "all":
+                if plex_default_user_setting:
                     plex_user_obj = self.plex.get_user_by_name(plex_default_user_setting)
                     if plex_user_obj:
                         self.logger.debug(f"Fetching Plex favorites for specific user: {plex_user_obj.name}")
                         plex_user_context_id_for_api = plex_user_obj.id
                         plex_user_context_name_for_log = plex_user_obj.name
-                    else:
-                        self.logger.warning(f"Plex default user '{plex_default_user_setting}' not found. Fetching for token owner.")
-                else: # "all" users or no specific user set for Plex
-                    self.logger.debug("Fetching Plex favorites for the token owner.")
-
-                plex_favs_items = self.plex.get_favorites(user_id=plex_user_context_id_for_api) # Returns List[ItemsFiltered]
-                if plex_favs_items:
-                    plex_favs_names = [fav.name for fav in plex_favs_items if fav.name]
-                    all_favorites.extend(plex_favs_names)
-                    self.logger.debug(f"Plex User context '{plex_user_context_name_for_log}' favorites (names): {plex_favs_names}")
+                        plex_favs_items = self.plex.get_favorites(user_id=plex_user_context_id_for_api) 
+                        if plex_favs_items:
+                            plex_favs_names = [fav.name for fav in plex_favs_items if fav.name]
+                            all_favorites.extend(plex_favs_names)
+                            self.logger.debug(f"Plex User context '{plex_user_context_name_for_log}' favorites (names): {plex_favs_names}")
+                        else:
+                            self.logger.warning(f"Plex default user '{plex_default_user_setting}' not found")
+                else: 
+                    self.logger.debug("No default Plex user specified. Fetching favorites for all Plex users.")
+                    all_plex_users = self.plex.get_users()
+                    if all_plex_users:
+                        for plex_user_in_loop in all_plex_users:
+                            user_favorites_items = self.plex.get_favorites(user_id=plex_user_in_loop.id)
+                            if user_favorites_items:
+                                user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
+                                self.logger.debug(f"Plex User {plex_user_in_loop.name} favorites: {user_favorites_names}")
+                                all_favorites.extend(user_favorites_names)
 
             self.logger.debug(f"All favorites count: {len(all_favorites)}")
             if len(all_favorites) > 0:
                 favorites_str = ",".join(all_favorites)
                 self.logger.info(f"Favorite Media: {favorites_str}")
 
+            # Get watch history
+            self.logger.debug(f"Fetching watch history...")
+            watch_history = self.db.get_watch_history(limit=None) # Get all watch history
+            if watch_history:
+                watch_history_names = [o["title"] for o in watch_history if o["title"]]
+                all_watch_history.extend(watch_history_names)
+
+            self.logger.debug(f"All watch history count: {len(all_watch_history)}")
+            if len(all_watch_history) > 0:
+                watch_history_str = ",".join(all_watch_history)
+                self.logger.info(f"Watch History: {watch_history_str}")
+
             if not template_string:
                 template_string = self.default_prompt
 
             template = Template(template_string)
             rendered_prompt = template.render(
-                limit=limit, media_name=media_name, media_exclude=all_ignored_str, favorites=favorites_str
+                limit=limit, media_name=media_name, media_exclude=all_ignored_str, favorites=favorites_str, watch_history=watch_history_str
             )
             return rendered_prompt
         except Exception as e:
@@ -1117,6 +1060,74 @@ class Discovarr:
             self.logger.error(f"Error getting grouped watch history: {e}", exc_info=True)
             return []
 
+    def delete_watch_history_item(self, history_item_id: int) -> Dict[str, Any]:
+        """
+        Deletes a specific watch history item from the database.
+
+        Args:
+            history_item_id (int): The ID of the watch history item to delete.
+
+        Returns:
+            Dict[str, Any]: A dictionary indicating success or failure.
+                            Example: {"success": True, "message": "Item deleted."}
+                                     {"success": False, "message": "Item not found.", "status_code": 404}
+        """
+        self.logger.info(f"Attempting to delete watch history item with ID: {history_item_id}")
+        
+        # First, try to get the item to retrieve its poster_url for cache deletion
+        history_item = self.db.get_watch_history_item_by_id(history_item_id)
+        
+        if not history_item:
+            self.logger.warning(f"Watch history item {history_item_id} not found for deletion.")
+            return {"success": False, "message": f"Watch history item {history_item_id} not found or could not be deleted.", "status_code": 404}
+
+        poster_filename = history_item.get('poster_url')
+        if poster_filename:
+            self.logger.info(f"Attempting to delete cached image '{poster_filename}' for history item {history_item_id}.")
+            if not self.image_cache.delete_cached_image(poster_filename):
+                self.logger.warning(f"Could not delete cached image '{poster_filename}' for history item {history_item_id}. Proceeding with DB deletion.")
+                # Optionally, you could make this a hard failure if image deletion is critical
+
+        if self.db.delete_watch_history_item(history_item_id):
+            self.logger.info(f"Successfully deleted watch history item {history_item_id} from database.")
+            return {"success": True, "message": f"Watch history item {history_item_id} deleted successfully."}
+        
+        self.logger.error(f"Failed to delete watch history item {history_item_id} from database after attempting image cache cleanup.")
+        return {"success": False, "message": f"Failed to delete watch history item {history_item_id} from database.", "status_code": 500}
+
+    def delete_all_watch_history(self) -> Dict[str, Any]:
+        """
+        Deletes all watch history items from the database.
+
+        Returns:
+            Dict[str, Any]: A dictionary indicating success or failure.
+                            Example: {"success": True, "message": "All items deleted."}
+                                     {"success": False, "message": "Error message.", "status_code": 500}
+        """
+        self.logger.info("Attempting to delete all watch history items.")
+        try:
+            # Get all history items to iterate for their poster_urls
+            all_history_items = self.db.get_watch_history(limit=None)
+            if all_history_items:
+                self.logger.info(f"Found {len(all_history_items)} watch history items to process for image cache deletion.")
+                for item in all_history_items:
+                    poster_filename = item.get('poster_url')
+                    if poster_filename:
+                        self.logger.debug(f"Attempting to delete cached image '{poster_filename}' for history item ID {item.get('id')}.")
+                        if not self.image_cache.delete_cached_image(poster_filename):
+                            self.logger.warning(f"Could not delete cached image '{poster_filename}' for history item ID {item.get('id')}. Proceeding.")
+            else:
+                self.logger.info("No watch history items found to delete images for.")
+
+            # Proceed to delete all history items from the database
+            deleted_count = self.db.delete_all_watch_history()
+            self.logger.info(f"Successfully deleted {deleted_count} watch history item(s).")
+            return {"success": True, "message": f"Deleted {deleted_count} watch history item(s)."}
+        except Exception as e:
+            self.logger.error(f"Error during the process of deleting all watch history items: {e}", exc_info=True)
+            return {"success": False, "message": f"Failed to delete all watch history items: {e}", "status_code": 500}
+
+
     def get_media_by_field(self, col_name: str) -> List[Any]:
         """
         Get unique values from a specific column in the media table.
@@ -1155,3 +1166,18 @@ class Discovarr:
         else:
             # trigger_job_now in DiscovarrScheduler already logs specific errors
             return {"success": False, "message": f"Failed to trigger job '{job_id}'. Check server logs for details."}
+        
+    # --- Trakt Methods ---
+    def trakt_authenticate(self) -> Dict[str, Any]:
+        """
+        Initiates the Trakt authentication process.
+        Returns a dictionary with success status, user_code, verification_url, and a message.
+        """
+        if not self.trakt:
+            self.logger.warning("Trakt service not available or not enabled. Cannot authenticate.")
+            return {"success": False, "message": "Trakt service not available or not enabled."}
+        
+        self.logger.info("Attempting to authenticate with Trakt...")
+        # _authenticate in TraktProvider is blocking and handles the flow.
+        # It now returns a dictionary.
+        return self.trakt._authenticate()
