@@ -7,20 +7,23 @@ import traceback
 from datetime import datetime, timedelta
 from jinja2 import Template # Import Jinja2 Template
 from urllib.parse import urljoin
-from typing import Optional, Dict, List, Any  # Import typing for better code clarity
-from plugins.jellyfin import Jellyfin
-from services.radarr import Radarr
-from services.sonarr import Sonarr  
-from plugins.gemini import Gemini
-from plugins.ollama import Ollama
+from typing import Optional, Dict, List, Any, Union
+import asyncio # For creating tasks
+import aiohttp # For async HTTP requests in the caching task
+from plugins.jellyfin import JellyfinProvider
+from services.radarr import Radarr # Keep Radarr import
+from services.sonarr import Sonarr
+from plugins.gemini import GeminiProvider # Keep GeminiProvider import
+from plugins.ollama import OllamaProvider # Changed from Ollama
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
-from plugins.plex import Plex
+from plugins.plex import PlexProvider
+from services.image_cache import ImageCacheService # Import the new service
 from plugins.trakt import TraktProvider # Import TraktProvider
-from services.models import ItemsFiltered
+from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
 
 class Discovarr:
     """
@@ -92,6 +95,7 @@ class Discovarr:
         self.trakt = None # Initialize Trakt service instance
         self.tmdb = None
 
+        self.image_cache = ImageCacheService() # Initialize ImageCacheService
         # Load backup setting first as it's needed for Database initialization
         self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
         # Initialize Database with the backup setting
@@ -166,7 +170,7 @@ class Discovarr:
         self.trakt = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_token:
-             self.plex = Plex(
+             self.plex = PlexProvider(
                 plex_url=self.plex_url,
                 plex_token=self.plex_token,
                 limit=self.recent_limit # Use recent_limit for default Plex limit
@@ -178,7 +182,7 @@ class Discovarr:
             self.logger.info("Plex integration is disabled.")
 
         if self.jellyfin_enabled and self.jellyfin_url and self.jellyfin_api_key:
-            self.jellyfin = Jellyfin(
+            self.jellyfin = JellyfinProvider(
                 jellyfin_url=self.jellyfin_url,
                 jellyfin_api_key=self.jellyfin_api_key,
             )
@@ -196,7 +200,7 @@ class Discovarr:
             api_key=self.sonarr_api_key,
         )
         if self.gemini_enabled and self.gemini_api_key:
-            self.gemini = Gemini(
+            self.gemini = GeminiProvider(
                 gemini_api_key=self.gemini_api_key
             )
         else:
@@ -204,7 +208,7 @@ class Discovarr:
             self.logger.info("Gemini API key not configured. Gemini service disabled.")
 
         if self.ollama_enabled and self.ollama_base_url:
-            self.ollama = Ollama(
+            self.ollama = OllamaProvider(
                 ollama_base_url=self.ollama_base_url,
             )
             self.logger.info("Ollama service initialized.")
@@ -214,9 +218,6 @@ class Discovarr:
             self.logger.info("Ollama integration is disabled.")
 
         if self.trakt_enabled and self.trakt_client_id and self.trakt_client_secret:
-            # TODO: Implement OAuth flow to get access_token if not already stored/provided
-            # For now, assuming access_token might be None or manually set in config for testing
-            # access_token = self.settings.get("trakt", "access_token") # Example if stored
             self.trakt = TraktProvider(
                 client_id=self.trakt_client_id,
                 client_secret=self.trakt_client_secret,
@@ -224,6 +225,11 @@ class Discovarr:
                 discovarr_app=self # Pass the Discovarr instance
             )
             self.logger.info("Trakt service initialized.")
+            # If Trakt is initialized but not authenticated, _authenticate might be called
+            # during TraktProvider's __init__.
+            # If you want to explicitly trigger it later (e.g., via an endpoint),
+            # you might adjust TraktProvider's __init__ to not auto-authenticate
+            # or provide a method to check auth status.
         else:
             self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
@@ -264,15 +270,14 @@ class Discovarr:
                 raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
  
     # --- Plex Methods ---
-    def plex_get_users(self) -> Optional[List[Dict[str, Any]]]:
+    def plex_get_users(self) -> Optional[List[LibraryUser]]:
         """Get all managed Plex users."""
         if not self.plex:
             self.logger.warning("Plex service not available.")
             return None
         return self.plex.get_users()
 
-    def plex_get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
-        """Get a specific Plex user by name."""
+    def plex_get_user_by_name(self, username: str) -> Optional[LibraryUser]:
         if not self.plex:
             self.logger.warning("Plex service not available.")
             return None
@@ -283,13 +288,13 @@ class Discovarr:
         if not self.plex:
             self.logger.warning("Plex service not available.")
             return None
-        # TODO: Make username configurable instead of hardcoding "trevor"
+        # TODO: Make username configurable instead of hardcoding 
         # For now, assuming the main account token is used or a specific user context is desired.
         # If using a managed user's token, this would be simpler.
         # If using main account token and want a specific managed user's history, need their ID.
-        user = self.plex.get_user_by_name("tsquillario") # Example, replace "trevor" or make configurable
+        user = self.plex.get_user_by_name("default") # Example, replace "default" make configurable
         if not user:
-            self.logger.warning("Default Plex user 'trevor' not found for recently watched. Ensure user exists or configure.")
+            self.logger.warning("Default Plex user 'default' not found for recently watched. Ensure user exists or configure.")
             # Fallback: If no specific user, try to get history for the account associated with the token.
             # Plex's /status/sessions/history/all with `accountID` filters by that account.
             # If `accountID` is omitted, it might show history for the token's primary account.
@@ -299,16 +304,31 @@ class Discovarr:
 
     def plex_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """Get filtered recently watched items for the default Plex user."""
-        user = self.plex.get_user_by_name("tsquillario") # Example, replace "trevor" or make configurable
-        if not user:
-            self.logger.warning("Default Plex user 'trevor' not found for recently watched. Ensure user exists or configure.")
+        user = self.plex.get_user_by_name("default") # Example, replace "default" or make configurable
+        if not user: # user is now Optional[LibraryUser]
+            self.logger.warning("Default Plex user 'default' not found for recently watched. Ensure user exists or configure.")
         raw_items = self.plex.get_recently_watched(plex_user_id=user.get("id"), limit=limit, to_json_output=False)
         if raw_items is None: # Indicates an error during fetch or user not found
             return None
         # get_items_filtered handles empty list if no items were returned
         return self.plex.get_items_filtered(items=raw_items, source_type="history")
 
-    def plex_get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[List[Any]]:
+    # --- Trakt Methods ---
+    def trakt_authenticate(self) -> Dict[str, Any]:
+        """
+        Initiates the Trakt authentication process.
+        Returns a dictionary with success status, user_code, verification_url, and a message.
+        """
+        if not self.trakt:
+            self.logger.warning("Trakt service not available or not enabled. Cannot authenticate.")
+            return {"success": False, "message": "Trakt service not available or not enabled."}
+        
+        self.logger.info("Attempting to authenticate with Trakt...")
+        # _authenticate in TraktProvider is blocking and handles the flow.
+        # It now returns a dictionary.
+        return self.trakt._authenticate()
+
+    def plex_get_all_items_filtered(self, attribute_filter: Optional[str] = None) -> Optional[Union[List[ItemsFiltered], List[str]]]:
         """Get all filtered library items (movies/shows) from Plex."""
         if not self.plex:
             self.logger.warning("Plex service not available.")
@@ -319,24 +339,24 @@ class Discovarr:
         if not self.jellyfin:
             self.logger.warning("Jellyfin service not available.")
             return None
-        user = self.jellyfin.get_user_by_name("trevor")
-        return self.jellyfin.get_recently_watched(limit=limit, user_id=user.get("Id"))
+        user = self.jellyfin.get_user_by_name(self.settings.get("jellyfin", "default_user") or "") # user is now Optional[LibraryUser]
+        return self.jellyfin.get_recently_watched(limit=limit, user_id=user.id) # Access .id
     
-    def jellyfin_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def jellyfin_get_recently_watched_filtered(self, limit: Optional[int] = None) -> Optional[List[str]]:
         if not self.jellyfin:
             self.logger.warning("Jellyfin service not available.")
             return None
-        user = self.jellyfin.get_user_by_name("trevor")
+        user = self.jellyfin.get_user_by_name(self.settings.get("jellyfin", "default_user") or "") # user is now Optional[LibraryUser]
         r = self.jellyfin.get_recently_watched(limit=limit, user_id=user.get("Id"))
         return self.jellyfin.get_items_filtered(items=r, attribute_filter="Name")
-    def get_prompt(self, limit: int, media_name: Optional[str] = None, favorite_option: Optional[str] = None, template_string: Optional[str] = None) -> str:
+    def get_prompt(self, limit: int, media_name: Optional[str] = None, template_string: Optional[str] = None) -> str:
         """
         Renders a prompt string using Jinja2 templating.
 
         Args:
-            template_string (str): The Jinja2 template string.
             limit (int): The limit to be used in the template.
             media_name (str): The media name to be used in the template.
+            template_string (str): The Jinja2 template string.
 
         Returns:
             str: The rendered prompt string.
@@ -344,7 +364,6 @@ class Discovarr:
         try:
             self.logger.debug(f"Prompt limit: {limit}")
             self.logger.debug(f"Prompt media_name: {media_name}")
-            self.logger.debug(f"Prompt favorite_option: {favorite_option}")
             self.logger.debug(f"Prompt template_string: {template_string}")
             # Get current movies and series from jellyfin to exclude from suggestions
             all_media = []
@@ -354,6 +373,9 @@ class Discovarr:
             if self.plex: # Add Plex media if Plex is configured
                 plex_media = self.plex.get_all_items_filtered(attribute_filter="name") # ItemsFiltered uses 'name'
                 if plex_media: all_media.extend(plex_media)
+                
+            # TODO: Add support for listing out entire Trakt collection. Does that even make sense in this context?
+
             self.logger.debug(f"{len(all_media)} titles found")
             # Get ignored suggestions to exclude as well
             all_ignored = self.db.get_ignored_media_titles()
@@ -366,38 +388,54 @@ class Discovarr:
             # Template variable for favorites
             favorites_str = ""
             all_favorites = []
-            # IF favorites is specified, get favorites
-            if favorite_option:
-                if self.jellyfin:
-                    if favorite_option == "all":
-                        all_jellyfin_users = self.jellyfin.get_users()
-                        if all_jellyfin_users:
-                            for user in all_jellyfin_users:
-                                user_favorites = self.jellyfin.get_favorites(user_id=user.get("Id"))
-                                user_favorites_filtered = self.jellyfin.get_items_filtered(items=user_favorites, attribute_filter="Name")
-                                self.logger.debug(f"Jellyfin User {user.get('Name')} favorites: {user_favorites_filtered}")
-                                if user_favorites_filtered: all_favorites.extend(user_favorites_filtered)
-                    else: # Specific Jellyfin user
-                        user = self.jellyfin.get_user_by_name(username=favorite_option)
-                        if user:
-                            self.logger.debug(f"Jellyfin User {user.get('Name')} found with ID {user.get('Id')}")
-                            user_favorites = self.jellyfin.get_favorites(user_id=user.get("Id"))
-                            user_favorites_filtered = self.jellyfin.get_items_filtered(items=user_favorites, attribute_filter="Name")
-                            if user_favorites_filtered: all_favorites.extend(user_favorites_filtered)
-                            self.logger.debug(f"Jellyfin User {user.get('Name')} favorites: {user_favorites_filtered}")
-                
-                if self.plex: # Add Plex favorites if Plex is configured
-                    # Plex favorites are tied to the token, plex_user_id is a hint.
-                    # Using a placeholder or default user ID context for Plex get_favorites.
-                    # This part might need refinement based on how Plex user context for ratings is handled.
-                    plex_user_for_favorites = self.plex.get_user_by_name(favorite_option) # Try specific user
-                    if not plex_user_for_favorites and favorite_option == "all": # Or a default if "all"
-                        plex_user_for_favorites = self.plex.get_user_by_name("trevor") # Example default
-                    if plex_user_for_favorites:
-                        plex_favs_raw = self.plex.get_favorites(plex_user_id=plex_user_for_favorites.get("id"))
-                        plex_favs_filtered_names = self.plex.get_items_filtered(items=plex_favs_raw, source_type="library_favorites", attribute_filter="name")
-                        if plex_favs_filtered_names: all_favorites.extend(plex_favs_filtered_names)
-                        self.logger.debug(f"Plex User context '{plex_user_for_favorites.get('name')}' favorites (names): {plex_favs_filtered_names}")
+
+            # Fetch Jellyfin favorites
+            if self.jellyfin:
+                jellyfin_default_user_setting = self.settings.get("jellyfin", "default_user")
+                self.logger.debug(f"Jellyfin default_user setting for favorites: {jellyfin_default_user_setting}")
+                if jellyfin_default_user_setting and jellyfin_default_user_setting.lower() != "all":
+                    user = self.jellyfin.get_user_by_name(username=jellyfin_default_user_setting)
+                    if user:
+                        self.logger.debug(f"Fetching Jellyfin favorites for specific user: {user.name}")
+                        user_favorites_items = self.jellyfin.get_favorites(user_id=user.id) # Returns List[ItemsFiltered]
+                        if user_favorites_items:
+                            user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
+                            all_favorites.extend(user_favorites_names)
+                            self.logger.debug(f"Jellyfin User {user.name} favorites: {user_favorites_names}")
+                else: # "all" users or no specific user set for Jellyfin
+                    self.logger.debug("Fetching Jellyfin favorites for all users.")
+                    all_jellyfin_users = self.jellyfin.get_users()
+                    if all_jellyfin_users:
+                        for user_in_loop in all_jellyfin_users:
+                            user_favorites_items = self.jellyfin.get_favorites(user_id=user_in_loop.id) # Returns List[ItemsFiltered]
+                            if user_favorites_items:
+                                user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
+                                self.logger.debug(f"Jellyfin User {user_in_loop.name} favorites: {user_favorites_names}")
+                                all_favorites.extend(user_favorites_names)
+
+            # Fetch Plex favorites
+            if self.plex:
+                plex_default_user_setting = self.settings.get("plex", "default_user")
+                self.logger.debug(f"Plex default_user setting for favorites: {plex_default_user_setting}")
+                plex_user_context_id_for_api = None
+                plex_user_context_name_for_log = "token owner"
+
+                if plex_default_user_setting and plex_default_user_setting.lower() != "all":
+                    plex_user_obj = self.plex.get_user_by_name(plex_default_user_setting)
+                    if plex_user_obj:
+                        self.logger.debug(f"Fetching Plex favorites for specific user: {plex_user_obj.name}")
+                        plex_user_context_id_for_api = plex_user_obj.id
+                        plex_user_context_name_for_log = plex_user_obj.name
+                    else:
+                        self.logger.warning(f"Plex default user '{plex_default_user_setting}' not found. Fetching for token owner.")
+                else: # "all" users or no specific user set for Plex
+                    self.logger.debug("Fetching Plex favorites for the token owner.")
+
+                plex_favs_items = self.plex.get_favorites(user_id=plex_user_context_id_for_api) # Returns List[ItemsFiltered]
+                if plex_favs_items:
+                    plex_favs_names = [fav.name for fav in plex_favs_items if fav.name]
+                    all_favorites.extend(plex_favs_names)
+                    self.logger.debug(f"Plex User context '{plex_user_context_name_for_log}' favorites (names): {plex_favs_names}")
 
             self.logger.debug(f"All favorites count: {len(all_favorites)}")
             if len(all_favorites) > 0:
@@ -610,27 +648,88 @@ class Discovarr:
             return None
 
 
-    def _sync_watch_history_to_db(self, user_name: str, user_id: str, recently_watched_items: Optional[List[Dict[str, Any]]], source: str) -> None:
-        """Helper method to filter and add/update watch history items in the database."""
-        if recently_watched_items is None or not recently_watched_items:
-            self.logger.info(f"No new recently watched items for {user_name} from {source} or error fetching.")
+    async def _cache_image_if_needed(self, image_url: str, provider_name: str, item_id: Union[str, int]) -> Optional[str]:
+        """
+        Asynchronously caches an image if a valid external URL is provided.
+        Returns the path to the cached image or the original URL if caching is skipped/failed.
+        """
+        original_url = image_url # Keep original URL as fallback
+        if not image_url or not item_id:
+            self.logger.debug(f"Skipping image cache for {provider_name} item {item_id}: Missing URL or item ID.")
+            return original_url
+
+        # Check if the URL looks like it's already a local cached path
+        if image_url.startswith(f"/{self.image_cache.cache_base_dir.name}/"):
+            self.logger.debug(f"Skipping image cache for {provider_name} item {item_id}: URL '{image_url}' appears to be already cached.")
             return
 
-        filter_func = self.jellyfin.get_items_filtered if source == "jellyfin" else self.plex.get_items_filtered
-        unique_items = filter_func(recently_watched_items, source_type="history" if source == "plex" else None) # Pass source_type for Plex
+        try:
+            # Create a new session for each task for simplicity in fire-and-forget.
+            # For very high volume, a shared session might be considered.
+            async with aiohttp.ClientSession() as session:
+                cached_path = await self.image_cache.save_image_from_url(session, image_url, provider_name, str(item_id))
+                return cached_path if cached_path else original_url
+        except Exception as e:
+            self.logger.error(f"Exception in image caching task for {provider_name} item {item_id} (URL: {image_url}): {e}", exc_info=True)
+        return original_url # Fallback to original URL on error
 
-        if unique_items:
+
+    async def _sync_watch_history_to_db(self, user_name: str, user_id: str, recently_watched_items: Optional[List[ItemsFiltered]], source: str) -> Optional[List[ItemsFiltered]]:
+        """
+        Helper method to filter and add/update watch history items in the database.
+        `recently_watched_items` is expected to be a list of ItemsFiltered.
+        Returns the list of unique, filtered items (ItemsFiltered) that were processed.
+        """
+        if recently_watched_items is None or not recently_watched_items:
+            self.logger.info(f"No new recently watched items for {user_name} from {source} or error fetching.")
+            return [] # Return empty list for consistency
+
+        # Items are already ItemsFiltered, so unique_items is recently_watched_items
+        unique_items = recently_watched_items
+
+        # Ensure unique_items is indeed a list of ItemsFiltered
+        if not all(isinstance(item, ItemsFiltered) for item in unique_items):
+            self.logger.error(f"Received items for {source} are not all ItemsFiltered. Aborting DB sync for this batch.")
+            return [] # Return empty list if type check fails
+
+        if unique_items: # unique_items is List[ItemsFiltered]
             for item in unique_items: # item is ItemsFiltered
+                if not isinstance(item, ItemsFiltered): # Defensive check
+                    self.logger.warning(f"Skipping item due to unexpected type in unique_items for {source}: {type(item)}")
+                    continue
+                
+                url_to_cache = item.poster_url
+
+                # If poster_url is None, try to fetch it from TMDB
+                if not url_to_cache and item.id and item.type and self.tmdb:
+                    self.logger.info(f"Poster URL is missing for {source} item '{item.name}' (ID: {item.id}). Attempting TMDB lookup.")
+                    tmdb_details = self.tmdb.get_media_detail(tmdb_id=item.id, media_type=item.type)
+                    if tmdb_details and tmdb_details.get("poster_path"):
+                        poster_path = tmdb_details.get("poster_path")
+                        url_to_cache = f"https://image.tmdb.org/t/p/w500{poster_path}"
+                        self.logger.info(f"Found poster URL from TMDB for '{item.name}': {url_to_cache}")
+                    else:
+                        self.logger.warning(f"Could not find poster URL from TMDB for '{item.name}' (ID: {item.id}).")
+                
+                final_poster_url = url_to_cache # Default to original or TMDB fetched URL
+                # Cache the poster image (if a URL exists) and get the local/cached path
+                if url_to_cache and item.id: # Ensure we have a URL and an ID for caching
+                    final_poster_url = await self._cache_image_if_needed(url_to_cache, source, item.id)
+
                 self.db.add_watch_history(
                     title=item.name,
                     id=item.id,
                     media_type=item.type,
                     watched_by=user_name,
-                    last_played_date=item.last_played_date
+                    last_played_date=item.last_played_date,
+                    poster_url=final_poster_url
                 )
+                
             self.logger.info(f"Synced and added/updated {len(unique_items)} unique recently watched title(s) for {user_name} from {source}.")
-
-    def sync_watch_history(self) -> Dict[str, Dict[str, Any]]:
+            return unique_items
+        return []
+    
+    async def sync_watch_history(self) -> Dict[str, Dict[str, Any]]:
         """
         Retrieves the list of available Gemini models.
 
@@ -647,21 +746,22 @@ class Discovarr:
             else:
                 self.logger.info(f"Starting Jellyfin watch history sync for {len(jellyfin_users)} user(s).")
                 for user_data in jellyfin_users:
-                    user_name = user_data.get("Name")
-                    user_id = user_data.get("Id")
+                    user_name = user_data.name # user_data is LibraryUser
+                    user_id = user_data.id # Access .id
                     if not user_name or not user_id:
                         self.logger.warning(f"Skipping Jellyfin user with missing Name or Id: {user_data}")
-                        continue
+                        continue # user_data is LibraryUser
                     self.logger.debug(f"Syncing watch history for Jellyfin user: {user_name} (ID: {user_id})")
+
                     recently_watched_items = self.jellyfin.get_recently_watched(
                         user_id=user_id, limit=self.recent_limit
                     )
-                    self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "jellyfin")
-                    # Store filtered names for the response, consistent with previous behavior
-                    filtered_item_names = [item.name for item in self.jellyfin.get_items_filtered(recently_watched_items) or []]
-                    all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+                    if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
+                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "jellyfin")
+                        filtered_item_names = [item.name for item in synced_items]
+                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
         else:
-            self.logger.info("Jellyfin service not configured. Skipping Jellyfin watch history sync.")
+            self.logger.debug("Jellyfin service not configured. Skipping Jellyfin watch history sync.")
 
         # Sync Plex history
         if self.plex:
@@ -672,18 +772,38 @@ class Discovarr:
             else:
                 self.logger.info(f"Starting Plex watch history sync for {len(plex_users)} managed user(s).")
                 for user_data in plex_users: # user_data is a dict from Plex API
-                    user_name = user_data.get("name") # Plex uses 'name'
-                    user_id = str(user_data.get("id")) # Plex uses 'id', ensure string
+                    user_name = user_data.name # user_data is LibraryUser
+                    user_id = user_data.id # Access .id
                     if not user_name or not user_id:
                         self.logger.warning(f"Skipping Plex user with missing name or id: {user_data}")
                         continue
                     self.logger.debug(f"Syncing watch history for Plex user: {user_name} (ID: {user_id})")
-                    recently_watched_items = self.plex.get_recently_watched(plex_user_id=user_id, limit=self.recent_limit, to_json_output=True)
-                    self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "plex")
-                    filtered_item_names = [item.name for item in self.plex.get_items_filtered(recently_watched_items, source_type="history") or []]
-                    all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+                    recently_watched_items = self.plex.get_recently_watched(user_id=user_id, limit=self.recent_limit)
+                    if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
+                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "plex")
+                        filtered_item_names = [item.name for item in synced_items]
+                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
         else:
-            self.logger.info("Plex service not configured. Skipping Plex watch history sync.")
+            self.logger.debug("Plex service not configured. Skipping Plex watch history sync.")
+
+        # Sync Trakt history
+        if self.trakt:
+            trakt_users = self.trakt.get_users() # Trakt usually returns one user
+            if not trakt_users:
+                self.logger.warning("No Trakt users found to sync watch history.")
+            else:
+                self.logger.info(f"Starting Trakt watch history sync for {len(trakt_users)} user(s).")
+                for user_data in trakt_users: # user_data is LibraryUser
+                    user_name = user_data.name
+                    user_id = user_data.id # Trakt user slug can be used as ID
+                    self.logger.debug(f"Syncing watch history for Trakt user: {user_name} (ID: {user_id})")
+                    recently_watched_items = self.trakt.get_recently_watched(user_id=user_id, limit=self.recent_limit)
+                    if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
+                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "trakt")
+                        filtered_item_names = [item.name for item in synced_items]
+                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+        else:
+            self.logger.debug("Trakt service not configured. Skipping Trakt watch history sync.")
 
         # Ensure uniqueness in recent_titles if a user exists in both systems with the same name
         for user_name_key in all_users_data:
@@ -767,18 +887,46 @@ class Discovarr:
             self.logger.error(f"Error retrieving quality profiles: {e}", exc_info=True)
             return None
 
-    def get_users(self) -> Optional[List[Dict[str, Any]]]:
+    def get_users(self) -> Optional[List[LibraryUser]]:
         """
-        Get all users from Jellyfin.
+        Get all users from enabled library providers (Jellyfin, Plex, Trakt).
+        Returns a combined List[LibraryUser].
 
         Returns:
-            Optional[List[Dict[str, Any]]]: List of user objects, or None if an error occurs.
+            Optional[List[LibraryUser]]: A combined list of user objects from all enabled providers,
+                                         or None if no providers are enabled or an error occurs.
         """
-        self.logger.info("Retrieving all users from Jellyfin.")
+        self.logger.info("Retrieving all users from enabled library providers.")
+        all_users: List[LibraryUser] = []
+        providers_queried = False
+
         if self.jellyfin:
-            return self.jellyfin.get_users()
-        self.logger.warning("Jellyfin service not available to retrieve users.")
-        return None
+            providers_queried = True
+            jellyfin_users = self.jellyfin.get_users()
+            if jellyfin_users:
+                all_users.extend(jellyfin_users)
+                self.logger.info(f"Retrieved {len(jellyfin_users)} users from Jellyfin.")
+        if self.plex:
+            providers_queried = True
+            plex_users = self.plex.get_users()
+            if plex_users:
+                all_users.extend(plex_users)
+                self.logger.info(f"Retrieved {len(plex_users)} users from Plex.")
+        if self.trakt:
+            providers_queried = True
+            trakt_users = self.trakt.get_users() # Trakt usually returns one user
+            if trakt_users:
+                all_users.extend(trakt_users)
+                self.logger.info(f"Retrieved {len(trakt_users)} users from Trakt.")
+
+        if not providers_queried:
+            self.logger.warning("No library providers (Jellyfin, Plex, Trakt) are configured/enabled to retrieve users.")
+            return None
+        
+        # Consider de-duplicating users if the same user (by name or another unique ID) could come from multiple sources.
+        # For now, it returns a combined list.
+        self.logger.info(f"Total users retrieved from all providers: {len(all_users)}")
+        return all_users
     def get_active_media(self) -> List[Dict[str, Any]]:
         """
         Get all non-ignored media entries from the database.

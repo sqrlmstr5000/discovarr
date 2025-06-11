@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List, Any, Union
-from services.models import ItemsFiltered
+from services.models import ItemsFiltered, LibraryUser
 
 class LibraryProviderBase(ABC):
     """
@@ -17,18 +17,18 @@ class LibraryProviderBase(ABC):
         pass
 
     @abstractmethod
-    def get_users(self) -> Optional[List[Dict[str, Any]]]:
+    def get_users(self) -> Optional[List[LibraryUser]]:
         """
         Retrieves all users from the library provider.
 
         Returns:
-            Optional[List[Dict[str, Any]]]: A list of user objects (dictionaries),
+            Optional[List[LibraryUser]]: A list of user objects,
                                              or None if an error occurs.
         """
         pass
 
     @abstractmethod
-    def get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_name(self, username: str) -> Optional[LibraryUser]:
         """
         Retrieves a specific user by their username.
 
@@ -36,7 +36,7 @@ class LibraryProviderBase(ABC):
             username (str): The username to search for.
 
         Returns:
-            Optional[Dict[str, Any]]: The user object (dictionary) if found,
+            Optional[LibraryUser]: The user object if found,
                                        or None otherwise.
         """
         pass

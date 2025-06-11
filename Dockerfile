@@ -71,8 +71,8 @@ COPY --from=client-builder /app/client/dist ./server/static
 
 # Create directories for persistent data (config, backups) and set ownership
 # These paths align with the volumes in your docker-compose.yml
-RUN mkdir -p /config /backups && \
-    chown -R ${PUID_BUILD}:${PGID_BUILD} /config /backups /app
+RUN mkdir -p /config /backups /cache && \
+    chown -R ${PUID_BUILD}:${PGID_BUILD} /config /backups /app /cache
 
 # Install gosu for dropping privileges
 RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*

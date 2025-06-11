@@ -61,7 +61,6 @@ const showRequestModal = ref(false);
 const isPreviewExpanded = ref(false); // For collapsible preview
 const selectedMediaForRequest = ref(null);
 const favoriteOption = ref(''); // For favorite media option
-
 const editableMediaName = ref('');
 
 const emit = defineEmits(['close', 'refresh']);
@@ -77,7 +76,6 @@ const loadSearchById = async (id) => {
       currentLoadedSearchId.value = id; // Update local ref
       searchName.value = searchData.name || '';
       searchText.value = searchData.prompt || '';
-      favoriteOption.value = searchData.favorites_option || '';
       // editableMediaName is typically a runtime parameter, not stored with the search prompt itself.
       // It will be set by initialMediaName if provided.
       console.log(`Loaded search ${id}:`, searchData);
@@ -188,7 +186,6 @@ const handleSubmit = async () => {
       body: JSON.stringify({ 
         prompt: searchText.value, 
         media_name: editableMediaName.value || null, // This is the media_name for the prompt template
-        favorites_option: favoriteOption.value || null
       })
     });
     
@@ -215,7 +212,6 @@ const handlePreview = async () => {
       prompt: searchText.value,
       limit: Number(currentLimit.value) || 5, // Ensure number and provide default
       media_name: editableMediaName.value || null,
-      favorite_option: favoriteOption.value || null // Include favorite option if set
     };
 
     const response = await fetch(`${config.apiUrl}/search/prompt/preview`, {
@@ -265,7 +261,6 @@ const handleSave = async () => {
     const payload = {
       prompt: searchText.value.trim(),
       name: searchName.value.trim() || null, // Use the name from the input
-      favorites_option: favoriteOption.value || null,
     };
 
     let response;
@@ -324,7 +319,6 @@ const handleCancel = () => {
   // Reset searchText to the current default prompt or empty if not available
   searchText.value = currentDefaultPrompt.value || '';
   editableMediaName.value = '';
-  favoriteOption.value = '';
   
   searchResults.value = null;
   previewResult.value = '';
@@ -448,7 +442,6 @@ const parseJsonString = (jsonString) => {
             <!-- Template Variables Section -->
             <SearchOptions
                 v-model:editableMediaName="editableMediaName"
-                v-model:favoriteOption="favoriteOption"
             /> 
 
           <!-- Prompt Preview Section -->

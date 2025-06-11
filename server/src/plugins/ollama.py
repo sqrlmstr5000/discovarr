@@ -9,7 +9,7 @@ from services.models import Suggestion, SuggestionList, MediaType
 from base.llm_provider_base import LLMProviderBase
 from services.models import SettingType # Import SettingType from models
 
-class Ollama(LLMProviderBase):
+class OllamaProvider(LLMProviderBase):
     """
     A class to interact with the Ollama API for finding similar media and listing models.
     """

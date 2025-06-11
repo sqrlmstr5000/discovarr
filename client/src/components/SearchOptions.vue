@@ -6,12 +6,12 @@ import InformationOutline from 'vue-material-design-icons/InformationOutline.vue
 
 const props = defineProps({
   editableMediaName: String,
-  favoriteOption: String,
+  // favoriteOption: String, // Removed
 });
 
 const emit = defineEmits([
   'update:editableMediaName',
-  'update:favoriteOption',
+  // 'update:favoriteOption', // Removed
 ]);
 
 const settingsStore = useSettingsStore();
@@ -24,28 +24,15 @@ const internalEditableMediaName = computed({
   set: (value) => emit('update:editableMediaName', value),
 });
 
-const internalFavoriteOption = computed({
-  get: () => props.favoriteOption,
-  set: (value) => emit('update:favoriteOption', value),
-});
-
-const fetchJellyfinUsers = async () => {
-  try {
-    const response = await fetch(`${config.apiUrl}/users`);
-    if (!response.ok) {
-      throw new Error('Failed to load Jellyfin users');
-    }
-    const users = await response.json();
-    jellyfinUsers.value = users.map(user => ({ id: user.Id, name: user.Name }));
-  } catch (error) {
-    console.error('Failed to load Jellyfin users:', error);
-    // Optionally, set an error state or notify the user
-  }
-};
+// const internalFavoriteOption = computed({ // Removed
+//   get: () => props.favoriteOption,
+//   set: (value) => emit('update:favoriteOption', value),
+// });
 
 onMounted(() => {
-  fetchJellyfinUsers();
+  // fetchJellyfinUsers(); // Call if users are needed for other features in this component
 });
+
 </script>
 
 <template>
@@ -68,22 +55,7 @@ onMounted(() => {
         media_name="{{ editableMediaName }}"
       </span>
       <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono">media_exclude=auto</span>
-      <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono">favorites=auto</span>
+      <!-- <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono">favorites=auto</span> Removed -->
     </div>
-    <h4 class="text-lg text-white font-semibold my-3">Search Options</h4>
-    <label class="text-gray-200">
-      Include Favorites From:
-      <select
-        v-model="internalFavoriteOption"
-        class="bg-gray-700 text-gray-200 px-2 py-1 font-mono focus:ring-1 focus:ring-discovarr rounded-md w-auto"
-        title="Select favorite option: 'all' or a specific username"
-      >
-        <option value="">None</option>
-        <option value="all">All Users</option>
-        <option v-for="user in jellyfinUsers" :key="user.id" :value="user.name">
-          {{ user.name }}
-        </option>
-      </select>
-    </label>
   </div>
 </template>

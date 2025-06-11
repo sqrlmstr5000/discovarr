@@ -75,6 +75,7 @@ class WatchHistory(PeeweeBaseModel):
     media_type = CharField(null=False)
     watched_by = CharField(null=False)
     last_played_date = DateTimeField(null=False)
+    poster_url = CharField(null=True)
     processed = BooleanField(default=False)
     processed_at = DateTimeField(null=True)
     created_at = DateTimeField(default=datetime.now)
@@ -115,7 +116,15 @@ class ItemsFiltered(BaseModel):
     last_played_date: Optional[str] # ISO 8601 str
     play_count: Optional[int] = None  
     is_favorite: Optional[bool] = None  
+    poster_url: Optional[str] = None
     
+class LibraryUser(BaseModel):
+    """Represents a user from a library provider."""
+    id: str
+    name: str
+    thumb: Optional[str] = None
+    source_provider: str
+
 class MediaType(enum.Enum):
     MOVIE = "movie"
     TV = "tv"

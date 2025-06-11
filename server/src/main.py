@@ -199,7 +199,6 @@ class PromptPreviewRequest(BaseModel):
     limit: int
     media_name: Optional[str] = None
     prompt: Optional[str] = None
-    favorite_option: Optional[str]
 
 # Store single instance
 _discovarr_instance = None
@@ -240,32 +239,19 @@ async def startup_event():
             logger.error(f"Failed to start APScheduler: {e}", exc_info=True)
 
 @api_app.get("/users")
-async def get_jellyfin_users(
+async def get_all_provider_users(
     discovarr: Discovarr = Depends(get_discovarr),
 ):
     """
-    Endpoint to retrieve all users from Jellyfin.
+    Endpoint to retrieve all users from enabled library providers (Jellyfin, Plex, Trakt).
     """
     users = discovarr.get_users()
     if users is None:
-        # This could happen if Jellyfin is not configured or if there's an API error
-        raise HTTPException(status_code=503, detail="Jellyfin service unavailable or error fetching users.")
+        # This could happen if no providers are configured or if there's an API error
+        raise HTTPException(status_code=503, detail="No library providers enabled or error fetching users.")
     return users
 
 # --- Plex Endpoints ---
-@api_app.get("/plex/users")
-async def get_plex_users(
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve all managed users from Plex.
-    """
-    users = discovarr.plex_get_users()
-    if users is None:
-        # This could happen if Plex is not configured or if there's an API error
-        raise HTTPException(status_code=503, detail="Plex service unavailable or error fetching users.")
-    return users
-
 @api_app.get("/plex/recently_watched")
 async def plex_recently_watched(
     limit: Optional[int] = None,
@@ -314,7 +300,7 @@ async def sync_watch_history(
     """
     Endpoint to retrieve recently watched items from the Jellyfin API.
     """
-    return discovarr.sync_watch_history()
+    return await discovarr.sync_watch_history()
 
 @api_app.get("/jellyfin/recently_watched")
 async def jellyfin_recently_watched(
@@ -334,7 +320,7 @@ async def jellyfin_recently_watched_filtered(
     """
     Endpoint to retrieve recently watched items from the Jellyfin API.
     """
-    return ai_arr.jellyfin_get_recently_watched_filtered(limit)
+    return discovarr.jellyfin_get_recently_watched_filtered(limit)
 
 @api_app.get("/jellyfin/all")
 async def jellyfin_all(
@@ -356,6 +342,38 @@ async def jellyfin_all(
     # Assuming the goal is the filtered list of objects/names.
     # The original endpoint name `jellyfin_get_all_videos_to_string` suggests it returned a string.
     return items # Returning the list of objects/names as per get_items_filtered output
+
+# --- Trakt Endpoints ---
+@api_app.post("/trakt/authenticate")
+async def trakt_authenticate_endpoint(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to initiate Trakt authentication.
+    This will typically involve device authentication flow.
+    """
+    logger.info("Received request to authenticate Trakt.")
+    if not discovarr.trakt:
+        raise HTTPException(status_code=503, detail="Trakt service is not configured or enabled.")
+    
+    # The _authenticate method in TraktProvider is blocking.
+    # Running it in a thread to avoid blocking FastAPI's event loop for long.
+    # However, the user interaction (entering code) is inherently blocking for the user.
+    auth_result = await asyncio.to_thread(discovarr.trakt_authenticate)
+    
+    if auth_result.get("success"):
+        return {
+            "status": "success", 
+            "message": auth_result.get("message", "Trakt authentication process initiated. Check server logs for user code and verification URL."),
+            "user_code": auth_result.get("user_code"),
+            "verification_url": auth_result.get("verification_url")
+        }
+    else:
+        # The TraktProvider's _authenticate method logs specifics.
+        # This might mean auth was already in progress, or an error occurred.
+        # The message from auth_result should provide more context.
+        detail_message = auth_result.get("message", "Trakt authentication failed or was already in progress. Check server logs.")
+        raise HTTPException(status_code=500, detail=detail_message)
 
 ###
 # Gemini
@@ -458,7 +476,7 @@ async def request_media(
     """
     logger.info(f"Requesting media: {tmdb_id} with body: {request_body.model_dump_json(indent=2)}")
     try:
-        # Assuming ai_arr.request_media now returns an APIResponse object
+        # Assuming discovarr.request_media now returns an APIResponse object
         api_response = discovarr.request_media(
             tmdb_id, request_body.media_type, request_body.quality_profile_id, request_body.save_default
         )
@@ -710,11 +728,10 @@ async def preview_search_prompt(
         # The get_prompt method in Discovarr handles the case where request.prompt (template_string) is None
         # by attempting to use self.default_prompt.
         # It also has its own try-except that returns an error message string if rendering fails.
-        rendered_prompt = ai_arr.get_prompt(
+        rendered_prompt = discovarr.get_prompt(
             limit=request.limit,
             media_name=request.media_name,
             template_string=request.prompt,
-            favorite_option=request.favorite_option
         )
         # If get_prompt returns an error message string (e.g., "Error rendering prompt: ..."),
         # we pass it through in the response.
@@ -998,6 +1015,10 @@ async def shutdown_event():
 
 # Mount the API application under the /api path prefix
 app.mount("/api", api_app)
+
+# Mount the /cache directory to serve cached images
+cache_dir = Path("/cache") # Define the cache directory path
+app.mount("/cache", StaticFiles(directory=cache_dir), name="cache")
 
 # Mount static files for the frontend (Vue.js app)
 # This assumes your Dockerfile copies the client's 'dist' output to 'server/static'

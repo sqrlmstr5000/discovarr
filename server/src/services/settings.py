@@ -113,20 +113,20 @@ class SettingsService:
             return
 
         # Delayed imports to prevent circular dependencies at module load time
-        from plugins.gemini import Gemini
-        from plugins.ollama import Ollama
-        from plugins.plex import Plex
-        from plugins.jellyfin import Jellyfin
+        from plugins.gemini import GeminiProvider
+        from plugins.ollama import OllamaProvider
+        from plugins.plex import PlexProvider
+        from plugins.jellyfin import JellyfinProvider
         from plugins.trakt import TraktProvider
         # Add other ProviderBase implementations here
 
         # Define lists of provider classes
         # Ensure these classes have PROVIDER_NAME and get_default_settings
         provider_classes_to_load = [
-            Gemini, 
-            Ollama,
-            Plex,
-            Jellyfin,
+            GeminiProvider,
+            OllamaProvider,
+            PlexProvider,
+            JellyfinProvider,
             TraktProvider
         ]
 
@@ -262,6 +262,10 @@ class SettingsService:
             if group not in result:
                 result[group] = {}
             for name, config in group_settings.items():
+                # Only include settings where 'show' is True or not defined
+                if not config.get('show', True):
+                    continue
+
                 actual_value = config["value"] # Default value
                 description = config["description"]
                 setting_type = config["type"]

@@ -1,5 +1,6 @@
 <template>
     <div class="min-w-[1200px] relative">
+        <!-- Category Title -->
         <div class="flex justify-between mr-6 mb-2"> <!-- Optional: Added a small bottom margin for better spacing -->
             <div class="flex items-center font-semibold text-white text-2xl cursor-pointer">
                 {{ category }}
@@ -28,7 +29,7 @@
                     <img 
                         style="user-select: none" 
                         class="pointer-events-none w-full h-full object-cover"
-                        :src="'http://192.168.0.137:8096/Items/'+media.media_id+'/Images/Primary?fillHeight=1440&fillWidth=960&quality=96'"
+                        :src="`${config.apiUrl.replace(/\/api$/, '')}/cache/${media.poster_url}`"
                         :alt="media.title"
                     >
                     <button
@@ -58,6 +59,7 @@ import { useRouter } from 'vue-router';
 import 'vue3-carousel/dist/carousel.css'
 import { Carousel, Slide, Navigation } from 'vue3-carousel'
 import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
+import { config } from '../config'; // Import the config
 import { computed } from 'vue';
 const settingsStore = useSettingsStore();
 

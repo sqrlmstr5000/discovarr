@@ -59,8 +59,8 @@ class DiscovarrScheduler(Schedule):
         """
         # Map of function names to actual methods
         if func_name == 'sync_watch_history':
-            # This is a synchronous function. AsyncIOScheduler will run it in an executor.
-            # Expects no runtime args/kwargs from DB schedule.
+            # This is now an async function. AsyncIOScheduler can call it directly.
+            # Expects no runtime args/kwargs from the DB schedule for this specific task.
             return self.discovarr.sync_watch_history
         elif func_name == 'process_watch_history':
             # _create_process_function returns an async function directly.

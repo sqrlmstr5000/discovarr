@@ -13,7 +13,13 @@ const ollamaModels = ref([]);
 const loadingOllamaModels = ref(false);
 const loadingGeminiModels = ref(false);
 const tokenUsageSummary = ref(null)
+const users = ref([]);
+const loadingUsers = ref(false);
 const loadingTokenUsage = ref(false)
+const showTraktAuthModal = ref(false);
+const traktAuthDetails = ref({ user_code: '', verification_url: '' });
+const traktAuthLoading = ref(false);
+const traktAuthError = ref('');
 const tokenUsageError = ref(null)
 
 const selectedRange = ref('all_time');
@@ -123,6 +129,53 @@ const fetchSonarrQualityProfiles = async () => {
     loadingSonarrProfiles.value = false;
   }
 };
+
+// Load users from the server
+const fetchUsers = async () => {
+  loadingUsers.value = true;
+  try {
+    const response = await fetch(`${config.apiUrl}/users`);
+    if (!response.ok) throw new Error('Failed to load users');
+    // Assuming the API returns an array of user objects like:
+    // { id: 'some_id_or_name', username: 'User Display Name', source_provider: 'plex' }
+    users.value = await response.json();
+  } catch (error) {
+    console.error('Error loading users:', error);
+    users.value = [];
+    toastStore.show(`Failed to load users: ${error.message}`, 'error');
+  } finally {
+    loadingUsers.value = false;
+  }
+};
+
+// Trakt Authentication
+const traktAuthenticate = async () => {
+  traktAuthLoading.value = true;
+  traktAuthError.value = '';
+  showTraktAuthModal.value = true; // Show modal immediately
+  try {
+    const response = await fetch(`${config.apiUrl}/trakt/authenticate`, {
+      method: 'POST',
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || `Failed to initiate Trakt authentication. Status: ${response.status}`);
+    }
+    traktAuthDetails.value = {
+      user_code: data.user_code,
+      verification_url: data.verification_url,
+      message: data.message
+    };
+    // Modal is already shown, user will see the details or error message.
+  } catch (error) {
+    console.error('Error initiating Trakt authentication:', error);
+    traktAuthError.value = error.message;
+    traktAuthDetails.value = { user_code: '', verification_url: '', message: '' }; // Clear details on error
+    // toastStore.show(`Trakt Authentication Error: ${error.message}`, 'error'); // Toast is also an option
+  } finally {
+    traktAuthLoading.value = false;
+  }
+};
 // Update a setting
 const updateSetting = async (group, name) => {
   // Only update if the setting's value has changed
@@ -177,6 +230,10 @@ const updateSetting = async (group, name) => {
         await fetchGeminiModels();
       } else if (group === 'ollama') {
         await fetchOllamaModels();
+      } else if (group === 'trakt' && name === 'enabled' && successfullyUpdatedValue === true) {
+        // If Trakt was just enabled, trigger authentication
+        toastStore.show('Trakt enabled. Please follow the authentication instructions.', 'info');
+        await traktAuthenticate();
       }
     }
     // Optionally, show a success toast here if desired
@@ -297,6 +354,7 @@ onMounted(async () => { // Make onMounted async
   fetchSonarrQualityProfiles();
   fetchGeminiModels(); // Now this will run after settings are loaded
   fetchOllamaModels(); // Fetch Ollama models
+  await fetchUsers(); // Fetch users
   updateDatesFromRange(); // Initialize dates based on default selectedRange and fetch
 });
 </script>
@@ -515,6 +573,61 @@ onMounted(async () => { // Make onMounted async
                     <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
                   </div>
                 </div>  
+
+                <!-- Plex Default User Dropdown -->
+                <template v-else-if="groupName === 'plex' && settingName === 'default_user'">
+                  <select
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                    :disabled="loadingUsers"
+                  >
+                    <option :value="null">
+                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
+                    </option>
+                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
+                      {{ user.name }}
+                    </option>
+                  </select>
+                </template>
+
+                <!-- Jellyfin Default User Dropdown -->
+                <template v-else-if="groupName === 'jellyfin' && settingName === 'default_user'">
+                  <select
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                    :disabled="loadingUsers"
+                  >
+                    <option :value="null">
+                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
+                    </option>
+                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
+                      {{ user.name }}
+                    </option>
+                  </select>
+                </template>
+
+                <!-- Trakt Default User Dropdown -->
+                <template v-else-if="groupName === 'trakt' && settingName === 'default_user'">
+                  <select
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                    :disabled="loadingUsers"
+                  >
+                    <option :value="null">
+                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
+                    </option>
+                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
+                      {{ user.name }}
+                    </option>
+                  </select>
+                </template>
+
                 <!-- Textarea for specific settings like default_prompt -->
                 <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
                   <textarea
@@ -563,5 +676,35 @@ onMounted(async () => { // Make onMounted async
         </div>
       </div>
     </main>
+  </div>
+  <!-- Trakt Authentication Modal -->
+  <div v-if="showTraktAuthModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div class="bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+      <h3 class="text-xl font-semibold text-white mb-4">Trakt Authentication</h3>
+      <div v-if="traktAuthLoading" class="text-center text-gray-300">
+        <p>Contacting Trakt...</p>
+        <!-- Optional: Add a spinner here -->
+      </div>
+      <div v-else-if="traktAuthError" class="text-red-400 mb-4">
+        <p><strong>Error:</strong> {{ traktAuthError }}</p>
+        <p>Please check the server logs for more details and try again if applicable.</p>
+      </div>
+      <div v-else-if="traktAuthDetails.user_code && traktAuthDetails.verification_url">
+        <p class="text-gray-300 mb-2">
+          To complete Trakt authentication, please go to:
+        </p>
+        <a :href="traktAuthDetails.verification_url" target="_blank" class="text-discovarr hover:underline font-semibold block text-center py-2 px-3 bg-gray-700 rounded-md mb-4">
+          {{ traktAuthDetails.verification_url }}
+        </a>
+        <p class="text-gray-300 mb-2">And enter the code:</p>
+        <p class="text-2xl font-bold text-white text-center bg-gray-700 p-3 rounded-md mb-4 tracking-widest">
+          {{ traktAuthDetails.user_code }}
+        </p>
+        <p v-if="traktAuthDetails.message" class="text-sm text-gray-400 mt-3">{{ traktAuthDetails.message }}</p>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button @click="showTraktAuthModal = false" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none">Close</button>
+      </div>
+    </div>
   </div>
 </template>

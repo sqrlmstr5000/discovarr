@@ -10,3 +10,5 @@ plexapi
 ollama
 trakt.py
 pytest
+aiohttp 
+aiofiles

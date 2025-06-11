@@ -2,12 +2,12 @@ import requests
 import json
 import logging
 import sys  
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode # Keep urlencode
 from typing import Optional, Dict, List, Any, Union
-from services.models import ItemsFiltered
+from services.models import ItemsFiltered, LibraryUser
 from base.library_provider_base import LibraryProviderBase # Import the base class
 
-class Jellyfin(LibraryProviderBase):
+class JellyfinProvider(LibraryProviderBase):
     """
     A class to interact with the Jellyfin API for user and media data.
     """
@@ -37,7 +37,7 @@ class Jellyfin(LibraryProviderBase):
         """Returns the name of the library provider."""
         return self.PROVIDER_NAME
 
-    def get_users(self) -> Optional[List[Dict[str, Any]]]:
+    def get_users(self) -> Optional[List[LibraryUser]]:
         """
         Get all users
 
@@ -52,59 +52,60 @@ class Jellyfin(LibraryProviderBase):
         try:
             response = requests.get(endpoint, headers=headers)
             response.raise_for_status()
-            users_data = response.json()
-            return users_data
+            users_data_raw = response.json()
+            
+            user_list: List[LibraryUser] = []
+            for user_dict in users_data_raw:
+                user_id = user_dict.get("Id")
+                if user_id: # Ensure user has an ID
+                    thumb_url = None
+                    if user_dict.get('PrimaryImageTag'):
+                         # Construct the image URL
+                         thumb_url = urljoin(self.jellyfin_url, f"/Users/{user_id}/Images/Primary?{urlencode({'tag': user_dict['PrimaryImageTag']})}")
+                    user_list.append(LibraryUser(
+                        id=user_id, 
+                        name=user_dict.get("Name", "Unknown User"), 
+                        thumb=thumb_url,
+                        source_provider=self.PROVIDER_NAME
+                    ))
+            return user_list
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error looking up Jellyfin user ID: {e}")
+            self.logger.error(f"Error fetching Jellyfin users: {e}")
         except json.JSONDecodeError:
-            self.logger.error("Error decoding JSON response from Jellyfin when looking up user ID.")
+            self.logger.error("Error decoding JSON response from Jellyfin when fetching users.")
         except Exception as e:
-            self.logger.exception(f"An unexpected error occurred: {e}")
+            self.logger.exception(f"An unexpected error occurred while fetching users: {e}")
         return None
 
-    def get_user_by_name(self, username: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_name(self, username: str) -> Optional[LibraryUser]:
         """
         Looks up the Jellyfin user ID using the provided username.
 
         Args:
             username (str): The username to search for.
 
-        Returns:
-            Optional[Dict[str, Any]]: The user object (dictionary) if found, or None otherwise.
+        Returns: 
+            Optional[LibraryUser]: The user object if found, or None otherwise.
         """
-        endpoint = urljoin(self.jellyfin_url, "/Users")
-        headers = {
-            "Authorization": self.jellyfin_auth,
-            "Content-Type": "application/json",
-        }
-        try:
-            response = requests.get(endpoint, headers=headers)
-            response.raise_for_status()
-            users_data = response.json()
-            # Iterate through the users to find the one with the matching username.
-            for user_dict in users_data:
-                if user_dict.get("Name") == username:
-                    return user_dict  # Return the user ID if found
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error looking up Jellyfin user ID: {e}")
-        except json.JSONDecodeError:
-            self.logger.error("Error decoding JSON response from Jellyfin when looking up user ID.")
-        except Exception as e:
-            self.logger.exception(f"An unexpected error occurred: {e}")
+        users = self.get_users() # This now returns List[LibraryUser]
+        if users:
+            for user_obj in users:
+                if user_obj.name == username:
+                    return user_obj
+        self.logger.info(f"Jellyfin user '{username}' not found.")
         return None
     
     
 
-    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """
         Retrieves recently watched items from the Jellyfin API.
 
         Args:
             user_id (str): The unique identifier for the user.
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
-
         Returns:
-            list: A list of recently watched items (dictionaries) from the Jellyfin API, or None on error.
+            Optional[List[ItemsFiltered]]: A list of filtered recently watched items, or None on error.
         """
         try:
             if not self.jellyfin_url or not self.jellyfin_api_key or not user_id:
@@ -131,16 +132,23 @@ class Jellyfin(LibraryProviderBase):
 
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
-            return response.json()["Items"]
+            raw_items = response.json().get("Items", [])
+            
+            # Filter and transform to ItemsFiltered
+            filtered_items = self.get_items_filtered(items=raw_items) # No attribute_filter needed here
+            if isinstance(filtered_items, list) and all(isinstance(i, ItemsFiltered) for i in filtered_items):
+                return filtered_items
+            self.logger.warning("get_items_filtered did not return a list of ItemsFiltered for Jellyfin recently watched.")
+            return []
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Jellyfin request failed: {e}")
         except json.JSONDecodeError:
             self.logger.error("Error decoding JSON response from Jellyfin.")
         except Exception as e:
             self.logger.exception(f"An unexpected error occurred: {e}")
-        return None
-    
-    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+        return None    
+
+    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """
         Retrieves favorite items from the Jellyfin API for a specific user.
 
@@ -149,8 +157,7 @@ class Jellyfin(LibraryProviderBase):
             limit (int, optional): The maximum number of items to retrieve. Defaults to the class default.
 
         Returns:
-            Optional[List[Dict[str, Any]]]: A list of favorite items (dictionaries) 
-                                             from the Jellyfin API, or None on error.
+            Optional[List[ItemsFiltered]]: A list of filtered favorite items, or None on error.
         """
         current_limit = limit if limit is not None else self.limit
         try:
@@ -178,7 +185,14 @@ class Jellyfin(LibraryProviderBase):
 
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
-            return response.json()["Items"]
+            raw_items = response.json().get("Items", [])
+
+            filtered_items = self.get_items_filtered(items=raw_items) # No attribute_filter
+            if isinstance(filtered_items, list) and all(isinstance(i, ItemsFiltered) for i in filtered_items):
+                return filtered_items
+            self.logger.warning("get_items_filtered did not return a list of ItemsFiltered for Jellyfin favorites.")
+            return []
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Jellyfin get_favorites request failed: {e}")
         except json.JSONDecodeError:
@@ -251,6 +265,8 @@ class Jellyfin(LibraryProviderBase):
                 self.logger.debug(f"Skipping item due to missing name (media_name is None): {item}")
                 continue
 
+            poster_url = f"{self.jellyfin_url}/Items/{media_id}/Images/Primary?fillHeight=1440&fillWidth=960&quality=96"
+
             if media_name in processed_media_map:
                 existing_item = processed_media_map[media_name]
                 if current_last_played_date_str:
@@ -267,7 +283,8 @@ class Jellyfin(LibraryProviderBase):
                     type=output_media_type,
                     last_played_date=current_last_played_date_str,
                     play_count=play_count,
-                    is_favorite=is_favorite
+                    is_favorite=is_favorite,
+                    poster_url=poster_url
                 )
                 #self.logger.debug(f"Added new media '{media_name}' (Type: {output_media_type}, ID: {media_id}) with last_played_date {current_last_played_date_str}")
 
@@ -328,3 +345,17 @@ class Jellyfin(LibraryProviderBase):
             return None
 
         return self.get_items_filtered(items=items, attribute_filter=attribute_filter)
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the Jellyfin provider.
+        """
+        # Ensure SettingType is imported if not already
+        from services.models import SettingType 
+        return {
+            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Jellyfin integration."},
+            "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL"},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key"},
+            "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyfin Default User to use for watch history and favorites, if not use all."},
+        }

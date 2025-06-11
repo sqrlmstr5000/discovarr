@@ -69,8 +69,8 @@ echo "INFO: Placeholder replacement complete."
 
 # Update ownership of key directories after potential UID/GID changes and before switching user.
 # This ensures the application user can read/write necessary files.
-echo "INFO: Ensuring ownership of /app, /config, /backups for UID ${PUID_TO_SET} and GID ${PGID_TO_SET}"
-chown -R "${PUID_TO_SET}:${PGID_TO_SET}" /app /config /backups
+echo "INFO: Ensuring ownership of /app, /config, /backups, /cache for UID ${PUID_TO_SET} and GID ${PGID_TO_SET}"
+chown -R "${PUID_TO_SET}:${PGID_TO_SET}" /app /config /backups /cache
 
 # Execute the CMD passed to the entrypoint (e.g., uvicorn ...)
 # Use gosu to drop privileges and execute the command as the APP_USER

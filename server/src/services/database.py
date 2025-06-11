@@ -247,7 +247,7 @@ class Database:
             self.logger.error(f"Error deleting media entry by TMDB ID {tmdb_id}: {e}")
             return False
 
-    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str) -> bool:
+    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str, poster_url: Optional[str] = None) -> bool:
         """
         Add or update a watch history entry.
         Assumes WatchHistory model has fields for media_jellyfin_id and media_type.
@@ -258,11 +258,17 @@ class Database:
             media_type (str): The type of media (e.g., 'movie', 'tv').
             watched_by (str): The identifier of who watched the media.
             last_played_date_str (str): The ISO 8601 string of the last played date.
+            poster_url (Optional[str]): URL of the poster image.
 
         Returns:
             bool: True if the operation was successful, False otherwise.
         """
         try:
+            # If last_played_date is None, default to now (UTC)
+            if last_played_date is None:
+                self.logger.info(f"last_played_date is None for '{title}', defaulting to current UTC time.")
+                last_played_date = datetime.now(timezone.utc).isoformat()
+                
             dt_last_played_date: datetime
             try:
                 # Parse the ISO 8601 date string.
@@ -291,7 +297,9 @@ class Database:
             if existing_entry:
                 existing_entry.last_played_date = dt_last_played_date_utc
                 existing_entry.media_type = media_type # Update type
+                existing_entry.media_id = id # This is either the TMDB or JellyfinID
                 existing_entry.updated_at = datetime.now()
+                existing_entry.poster_url = poster_url
                 existing_entry.save()
                 self.logger.info(f"Successfully updated watch history for '{title}' (ID: {id}) by {watched_by}")
             else:
@@ -300,7 +308,8 @@ class Database:
                     media_id=id,
                     media_type=media_type,
                     watched_by=watched_by,
-                    last_played_date=dt_last_played_date_utc
+                    last_played_date=dt_last_played_date_utc,
+                    poster_url=poster_url
                 )
                 self.logger.info(f"Successfully added new watch history for '{title}' (ID: {id}) by {watched_by}")
             return True

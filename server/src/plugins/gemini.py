@@ -10,7 +10,7 @@ from services.models import Suggestion, SuggestionList
 from base.llm_provider_base import LLMProviderBase
 from services.models import SettingType # Import SettingType from models
 
-class Gemini(LLMProviderBase):
+class GeminiProvider(LLMProviderBase):
     """
     A class to interact with the Gemini API for finding similar media.
     """

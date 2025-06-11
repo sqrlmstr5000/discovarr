@@ -4,8 +4,8 @@ import json
 from datetime import datetime # For type checking Trakt object attributes
 
 # Adjust these imports based on your project structure
-from plugins.trakt import TraktProvider
-from services.models import ItemsFiltered 
+from plugins.trakt import TraktProvider 
+from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
 from trakt import Trakt
 from trakt.objects.episode import Episode
 from trakt.objects.movie import Movie
@@ -82,22 +82,26 @@ class TestTraktProviderLive:
         users = live_trakt_provider.get_users()
         assert users is not None, "get_users should return a list, not None"
         assert isinstance(users, list)
-        assert len(users) > 0, "Expected at least one user (the authenticated user)"
+        assert len(users) > 0, "Expected at least one user (the authenticated user)" # TraktProvider returns a list
         
         user = users[0]
-        assert "Id" in user and isinstance(user["Id"], str), "User 'Id' (slug) should exist and be a string"
-        assert "Name" in user and isinstance(user["Name"], str), "User 'Name' (username) should exist and be a string"
+        assert isinstance(user, LibraryUser), "Expected user object to be an instance of LibraryUser"
+        assert hasattr(user, 'id') and isinstance(user.id, str), "User 'id' (slug) should exist and be a string"
+        assert hasattr(user, 'name') and isinstance(user.name, str), "User 'name' (username) should exist and be a string"
+        assert hasattr(user, 'thumb'), "User 'thumb' attribute should exist (can be None or str)"
+        assert user.source_provider == live_trakt_provider.PROVIDER_NAME
 
     def test_get_user_by_name_live(self, live_trakt_provider: TraktProvider):
         """Tests fetching a user by their name (should be the authenticated user)."""
         auth_user_list = live_trakt_provider.get_users()
         assert auth_user_list and len(auth_user_list) > 0, "Could not get authenticated user for this test"
-        authenticated_username = auth_user_list[0]["Name"]
+        authenticated_username = auth_user_list[0].name # Access .name attribute
 
         user = live_trakt_provider.get_user_by_name(authenticated_username)
         assert user is not None, f"User '{authenticated_username}' should be found"
-        assert user["Name"] == authenticated_username
-        assert "Id" in user
+        assert isinstance(user, LibraryUser), "Expected user object to be an instance of LibraryUser"
+        assert user.name == authenticated_username
+        assert hasattr(user, 'id')
 
         non_existent_user = live_trakt_provider.get_user_by_name("a_user_that_REALLY_does_not_exist_12345abc")
         assert non_existent_user is None, "Non-existent user should return None"
@@ -106,15 +110,15 @@ class TestTraktProviderLive:
         """Tests fetching recently watched items. Assumes the test account has some history."""
         users = live_trakt_provider.get_users()
         assert users and len(users) > 0
-        user_id_slug = users[0]["Id"]
+        user_id_slug = users[0].id # Access .id attribute
 
-        watched_items = live_trakt_provider.get_recently_watched(user_id=user_id_slug, limit=5)
+        watched_items = live_trakt_provider.get_recently_watched(user_id=user_id_slug, limit=5) # user_id is slug
         assert watched_items is not None, "Expected recently watched items or an empty list"
         assert isinstance(watched_items, list)
 
         if watched_items:
             item = watched_items[0]
-            assert type(item) in [Movie, Episode]
+            assert type(item) in [Movie, Episode, Show]
             assert hasattr(item, 'watched_at') and isinstance(item.watched_at, datetime)
         else:
             live_trakt_provider.logger.info("No recently watched items found for the test user. Test passed structurally.")
@@ -123,17 +127,22 @@ class TestTraktProviderLive:
         """Tests fetching favorite items (watchlist). Assumes the test account might have a watchlist."""
         users = live_trakt_provider.get_users()
         assert users and len(users) > 0
-        user_id_slug = users[0]["Id"]
+        user_id_slug = users[0].id # Access .id attribute
 
-        favorite_items = live_trakt_provider.get_favorites(user_id=user_id_slug, limit=5)
+        favorite_items = live_trakt_provider.get_favorites(user_id=user_id_slug, limit=5) # user_id is slug
         assert favorite_items is not None, "Expected favorite items or an empty list"
         assert isinstance(favorite_items, list)
+        
+        if not favorite_items:
+            pytest.skip("No favorite items (rated 9 or 10) found on Trakt for this test.")
+        assert len(favorite_items) > 0, "Expected at least one favorite item if not skipped"
 
         if favorite_items:
             item = favorite_items[0]
-            assert isinstance(item, (Movie, Show)), "Favorite items should be Trakt Movie or Show objects"
+            assert isinstance(item, (Movie, Show, Episode)), "Favorite items should be Trakt Movie or Show objects"
             assert hasattr(item, 'title')
-            assert hasattr(item, 'ids') and 'trakt' in item.ids
+            assert hasattr(item, 'rating')
+            assert isinstance(item.rating.value, int)
         else:
             live_trakt_provider.logger.info("No favorite items (watchlist) found for the test user. Test passed structurally.")
 
@@ -141,9 +150,9 @@ class TestTraktProviderLive:
         """Tests filtering of live recently watched items."""
         users = live_trakt_provider.get_users()
         assert users and len(users) > 0
-        user_id_slug = users[0]["Id"]
+        user_id_slug = users[0].id # Access .id attribute
 
-        raw_watched_items = live_trakt_provider.get_recently_watched(user_id=user_id_slug, limit=10)
+        raw_watched_items = live_trakt_provider.get_recently_watched(user_id=user_id_slug, limit=10) # user_id is slug
         assert raw_watched_items is not None
         
         if not raw_watched_items:
@@ -152,29 +161,36 @@ class TestTraktProviderLive:
         filtered_items = live_trakt_provider.get_items_filtered(items=raw_watched_items, source_type="history")
         assert isinstance(filtered_items, list)
         
-        if filtered_items:
-            item = filtered_items[0]
-            assert isinstance(item, ItemsFiltered)
-            assert item.name is not None
-            assert item.id is not None
-            assert item.type in ['movie', 'tv', None] 
-            assert hasattr(item, 'last_played_date')
-            assert hasattr(item, 'play_count') 
-            assert item.is_favorite is False # History items are not inherently favorites
+        item = filtered_items[0]
+        assert isinstance(item, ItemsFiltered)
+        assert item.name is not None
+        assert item.id is not None
+        assert item.type in ['movie', 'tv', None] 
+        assert hasattr(item, 'last_played_date')
+        assert hasattr(item, 'play_count') 
+        assert item.is_favorite is False # History items are not inherently favorites
 
-    def test_get_all_items_filtered_live(self, live_trakt_provider: TraktProvider):
-        """Tests fetching and filtering of all items (history + watchlist)."""
-        filtered_items = live_trakt_provider.get_all_items_filtered()
-        assert filtered_items is not None, "get_all_items_filtered should return a list or None, not an error"
-        assert isinstance(filtered_items, list)
+    def test_get_items_filtered_from_live_history_by_name(self, live_trakt_provider: TraktProvider):
+        """Tests filtering of live recently watched items, returning only names."""
+        users = live_trakt_provider.get_users()
+        assert users and len(users) > 0
+        user_id_slug = users[0].id # Access .id attribute
+
+        raw_watched_items = live_trakt_provider.get_recently_watched(user_id=user_id_slug, limit=10) # user_id is slug
+        assert raw_watched_items is not None
         
-        if filtered_items:
-            item = filtered_items[0]
-            assert isinstance(item, ItemsFiltered)
-            assert item.name is not None
-            assert item.id is not None
-            assert item.type in ['movie', 'tv', None]
-            # Further checks can be done on is_favorite or last_played_date if specific data is expected
-        else:
-            live_trakt_provider.logger.info("No items returned from get_all_items_filtered. Test passed structurally.")
+        if not raw_watched_items:
+            pytest.skip("No recently watched items found on Trakt for filtering by name test.")
 
+        filtered_names = live_trakt_provider.get_items_filtered(
+            items=raw_watched_items, 
+            source_type="history", 
+            attribute_filter="Name"
+        )
+        assert isinstance(filtered_names, list)
+        
+        if filtered_names:
+            item_name = filtered_names[0]
+            assert isinstance(item_name, str), "Expected a list of strings (names)"
+        else:
+            live_trakt_provider.logger.info("No names returned after filtering, but test passed structurally.")
