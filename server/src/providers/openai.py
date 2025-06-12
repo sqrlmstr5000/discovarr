@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-from plugins.openai import OpenAI
+from providers.openai import OpenAI
 
 class Suggestion(BaseModel):
     title: str

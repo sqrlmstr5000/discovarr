@@ -63,7 +63,7 @@ class SettingsService:
         self.logger = logging.getLogger(__name__)
         self.discovarr_app = discovarr_app
         SettingsService._build_default_settings_if_needed()
-        self._initialize_settings()
+        # self._initialize_settings() # Moved to be called by Discovarr after DB init
 
     def _validate_value(self, value: Any, setting_type: SettingType) -> bool:
         """Validate a value matches its expected type."""
@@ -113,11 +113,11 @@ class SettingsService:
             return
 
         # Delayed imports to prevent circular dependencies at module load time
-        from plugins.gemini import GeminiProvider
-        from plugins.ollama import OllamaProvider
-        from plugins.plex import PlexProvider
-        from plugins.jellyfin import JellyfinProvider
-        from plugins.trakt import TraktProvider
+        from providers.gemini import GeminiProvider
+        from providers.ollama import OllamaProvider
+        from providers.plex import PlexProvider
+        from providers.jellyfin import JellyfinProvider
+        from providers.trakt import TraktProvider
         # Add other ProviderBase implementations here
 
         # Define lists of provider classes
@@ -147,6 +147,7 @@ class SettingsService:
             logging.getLogger(__name__).info(f"Loaded default settings for provider: {provider_name}")
         
         SettingsService.DEFAULT_SETTINGS = current_default_settings
+        
     def _initialize_settings(self) -> None:
         """
         Create settings in database if they don't exist.

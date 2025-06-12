@@ -3,7 +3,7 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List
 
-import plugins.ollama as ollama # Official Ollama client
+from ollama import AsyncClient
 
 from services.models import Suggestion, SuggestionList, MediaType
 from base.llm_provider_base import LLMProviderBase
@@ -30,9 +30,9 @@ class OllamaProvider(LLMProviderBase):
             self.client = None
             return
 
-        self.logger.info(f"Initializing Ollama class URL: {self.ollama_base_url}")
+        self.logger.info(f"Initializing Ollama With Base URL: {self.ollama_base_url}")
         try:
-            self.client = ollama.AsyncClient(host=self.ollama_base_url)
+            self.client = AsyncClient(host=self.ollama_base_url)
         except Exception as e:
             self.logger.error(f"Failed to initialize Ollama client: {e}")
             self.client = None

@@ -274,7 +274,7 @@ class PlexProvider(LibraryProviderBase):
                 viewed_at_val = item.get('viewedAt')
             elif item.get('lastViewedAt'):
                 viewed_at_val = item.get('lastViewedAt')
-            self.logger.debug(f"Plex ViewedAt (raw value from history item '{media_name}'): {viewed_at_val}, type: {type(viewed_at_val)}")
+            #self.logger.debug(f"Plex ViewedAt (raw value from history item '{media_name}'): {viewed_at_val}, type: {type(viewed_at_val)}")
             if isinstance(viewed_at_val, str):
                 try:
                     # Attempt to parse the string as an ISO datetime

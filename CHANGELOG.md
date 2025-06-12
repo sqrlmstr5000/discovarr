@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trakt integration (alpha release)
 - Image caching service using /cache directory. Updated entrypoint.sh and Dockerfile. 
 - watch_history template variable to Search
+- Integration tests for Library and LLM Providers
 
 ### Changed
 - Using LibraryProviderBase and LLMProviderBase to standardize providers. Refactored providers.

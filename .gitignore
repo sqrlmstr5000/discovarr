@@ -29,6 +29,8 @@ coverage
 
 # Python
 __pycache__/
+.pytest_cache/
 
 # Docker
-compose.yml
+/compose.yml
+**/env.sh

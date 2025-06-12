@@ -283,7 +283,7 @@ class TraktProvider(LibraryProviderBase):
 
             # Filter and transform to ItemsFiltered
             # get_items_filtered expects a list of trakt.Object, not dicts
-            filtered_items = self.get_items_filtered(items=raw_watched_items, source_type="history")
+            filtered_items = self.get_items_filtered(items=raw_watched_items)
             if isinstance(filtered_items, list) and all(isinstance(i, ItemsFiltered) for i in filtered_items):
                 self.logger.debug(f"Trakt filtered items: {filtered_items}")
                 return filtered_items
@@ -316,7 +316,7 @@ class TraktProvider(LibraryProviderBase):
                 raw_favorite_items = list(rated_items_iter)
                 self.logger.info(f"Retrieved {len(raw_favorite_items)} raw items from ratings for user {user_id}.")
                 # Filter and transform to ItemsFiltered
-                filtered_items = self.get_items_filtered(items=raw_favorite_items, source_type="favorites") # Assuming a source_type for favorites
+                filtered_items = self.get_items_filtered(items=raw_favorite_items) # Assuming a source_type for favorites
                 if isinstance(filtered_items, list) and all(isinstance(i, ItemsFiltered) for i in filtered_items):
                     self.logger.debug(f"Trakt filtered items: {filtered_items}")
                     return filtered_items
@@ -328,11 +328,11 @@ class TraktProvider(LibraryProviderBase):
         except Exception as e:
             self._handle_trakt_exception(e, f"get_favorites for user {user_id}")
         return None
-    def get_items_filtered(self, items: Optional[List[Any]], attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
+    
+    def get_items_filtered(self, items: Optional[List[Any]], attribute_filter: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
         """
         Filters a list of raw Trakt media items.
         Items are expected to be trakt.objects (e.g., HistoryItem, Movie, TVShow).
-        'source_type' can be 'history' or 'watchlist'.
         """
         if not items: # items is List[trakt.Object]
             self.logger.debug("TraktProvider: No items provided for filtering.")

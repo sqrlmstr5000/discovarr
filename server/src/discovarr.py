@@ -10,40 +10,41 @@ from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Union
 import asyncio # For creating tasks
 import aiohttp # For async HTTP requests in the caching task
-from plugins.jellyfin import JellyfinProvider
+from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
 from services.radarr import Radarr # Keep Radarr import
 from services.sonarr import Sonarr
-from plugins.gemini import GeminiProvider # Keep GeminiProvider import
-from plugins.ollama import OllamaProvider # Changed from Ollama
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
-from plugins.plex import PlexProvider
 from services.image_cache import ImageCacheService # Import the new service
-from plugins.trakt import TraktProvider # Import TraktProvider
-from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
+from providers.jellyfin import JellyfinProvider
+from providers.plex import PlexProvider
+from providers.ollama import OllamaProvider # Changed from Ollama
+from providers.gemini import GeminiProvider # Keep GeminiProvider import
+from providers.trakt import TraktProvider # Import TraktProvider
 
 class Discovarr:
     """
     A class to interact with media servers and LLM APIs for media requests and management.
     """
 
-    def __init__(self): 
+    def __init__(self, db_path: Optional[str] = "/config/discovarr.db"):
         """
         Initializes the Discovarr class and sets up logging and API configurations.
+
+        Args:
+            db_path (Optional[str]): Path to the SQLite database file. Defaults to /config/discovarr.db.
         """
         
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing Discovarr class...")
 
-        # Log current system time and timezone
         now = datetime.now()
         local_tz = now.astimezone().tzinfo
         self.logger.info(f"Current system time: {now.strftime('%Y-%m-%d %H:%M:%S')} Timezone: {local_tz}")
 
-        self.db = Database("/config/discovarr.db")
         # Pass self (Discovarr instance) to SettingsService for callback
         self.settings = SettingsService(discovarr_app=self)
 
@@ -95,11 +96,16 @@ class Discovarr:
         self.trakt = None # Initialize Trakt service instance
         self.tmdb = None
 
+        self.db_path = db_path
         self.image_cache = ImageCacheService() # Initialize ImageCacheService
         # Load backup setting first as it's needed for Database initialization
         self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
         # Initialize Database with the backup setting
-        self.db = Database("/config/discovarr.db", backup_on_upgrade=self.backup_before_upgrade)
+        self.db = Database(self.db_path, backup_on_upgrade=self.backup_before_upgrade)
+        
+        # Now that the database is initialized by self.db,
+        # we can initialize the settings in the database.
+        self.settings._initialize_settings()
         # Load the rest of the configuration and (re)initialize other services
         try:
             self.reload_configuration()
@@ -287,10 +293,10 @@ class Discovarr:
             self.logger.debug(f"Prompt template_string: {template_string}")
             # Get current movies and series from jellyfin to exclude from suggestions
             all_media = []
-            if self.jellyfin:
+            if self.jellyfin_enabled:
                 jellyfin_media = self.jellyfin.get_all_items_filtered(attribute_filter="Name")
                 if jellyfin_media: all_media.extend(jellyfin_media)
-            if self.plex: # Add Plex media if Plex is configured
+            if self.plex_enabled: # Add Plex media if Plex is configured
                 plex_media = self.plex.get_all_items_filtered(attribute_filter="name") # ItemsFiltered uses 'name'
                 if plex_media: all_media.extend(plex_media)
                 
@@ -312,7 +318,7 @@ class Discovarr:
             all_watch_history = []
 
             # Fetch Jellyfin
-            if self.jellyfin:
+            if self.jellyfin_enabled:
                 jellyfin_default_user_setting = self.settings.get("jellyfin", "default_user")
                 self.logger.debug(f"Jellyfin default_user setting for favorites: {jellyfin_default_user_setting}")
                 if jellyfin_default_user_setting:
@@ -339,7 +345,7 @@ class Discovarr:
                                 all_favorites.extend(user_favorites_names)
 
             # Fetch Plex
-            if self.plex:
+            if self.plex_enabled:
                 plex_default_user_setting = self.settings.get("plex", "default_user")
                 self.logger.debug(f"Plex default_user setting for favorites: {plex_default_user_setting}")
                 plex_user_context_id_for_api = None

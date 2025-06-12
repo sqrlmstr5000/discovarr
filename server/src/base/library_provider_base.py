@@ -42,7 +42,7 @@ class LibraryProviderBase(ABC):
         pass
 
     @abstractmethod
-    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """
         Retrieves recently watched items for a specific user.
 
@@ -57,7 +57,7 @@ class LibraryProviderBase(ABC):
         pass
 
     @abstractmethod
-    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+    def get_favorites(self, user_id: str, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """
         Retrieves favorite items for a specific user.
 
