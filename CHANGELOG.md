@@ -4,17 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.7]() - 2025-06-0x
+## [0.0.7]() - 2025-06-12
 ### Added
-- Trakt integration (alpha release)
-- Image caching service using /cache directory. Updated entrypoint.sh and Dockerfile. 
-- watch_history template variable to Search
-- Integration tests for Library and LLM Providers
+- Trakt integration (watch history only)
+- Image caching service using /cache directory
+- Added watch_history template variable to Search
+- Integration tests for Library and LLM Providers. Some basic unit testing
+- Settings page enhancements
+- Allow changing PUID/PGUI in container
 
 ### Changed
 - Using LibraryProviderBase and LLMProviderBase to standardize providers. Refactored providers.
 - Added Default User Setting to Library providers. Removed this from the Search page.
 - Plex Provider enhancements
+- sync_watch_history will sync all history on first attempt, settings.recent_limit after
 
 ### Fixed 
 - ai_arr replacements, Closes PR #9
