@@ -6,10 +6,10 @@ const toastStore = useToastStore();
 
 const toastClasses = computed(() => {
   return {
-    'bg-green-500': toastStore.type === 'success',
-    'bg-red-500': toastStore.type === 'error',
-    'bg-blue-500': toastStore.type === 'info',
-    'bg-yellow-500': toastStore.type === 'warning',
+    'bg-gray-600': toastStore.type === 'success',
+    'bg-red-600': toastStore.type === 'error',
+    'bg-blue-600': toastStore.type === 'info',
+    'bg-amber-600': toastStore.type === 'warning',
   };
 });
 </script>

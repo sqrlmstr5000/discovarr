@@ -130,7 +130,8 @@ class OllamaProvider(LLMProviderBase):
         """
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Ollama integration."},
-            "base_url": {"value": "http://localhost:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434)."},
+            "base_url": {"value": "http://ollama:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434)."},
             "model": {"value": "llama3", "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
+            "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

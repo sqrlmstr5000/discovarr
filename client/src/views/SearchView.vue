@@ -17,6 +17,8 @@ import RequestModal from '../components/RequestModal.vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
 const settingsStore = useSettingsStore();
+import { useSearchStore } from '@/stores/searchStore'; // Import the new search store
+const searchStore = useSearchStore();
 import { useToastStore } from '@/stores/toast';
 const toastStore = useToastStore();
 
@@ -37,7 +39,7 @@ const initialMediaName = computed(() => route.query.initialMediaName || null);
 const currentLoadedSearchId = ref(props.searchId); // Local ref for the active search ID
 const searchName = ref('');
 const searchText = ref('');
-const searchResults = ref(null);
+const searchResults = computed(() => searchStore.results); // Read from store
 const loading = ref(false);
 const saving = ref(false); // Track if the current search is the default one (ID=1)
 const isCurrentSearchDefault = computed(() => currentLoadedSearchId.value === 1 || currentLoadedSearchId.value === '1');
@@ -64,6 +66,15 @@ const editableMediaName = ref('');
 const showEditMediaNameModal = ref(false);
 
 const emit = defineEmits(['close', 'refresh']);
+
+// Helper to generate a context object for the current form state
+const getCurrentFormContext = () => {
+  return {
+    searchId: currentLoadedSearchId.value,
+    prompt: searchText.value,
+    mediaName: editableMediaName.value || null,
+  };
+};
 
 const loadSearchById = async (id) => {
   try {
@@ -161,6 +172,16 @@ onMounted(async () => {
     if (initialMediaName.value) {
       editableMediaName.value = initialMediaName.value || '';
     }
+
+    // After all initial setup of form fields (searchText, currentLoadedSearchId, editableMediaName),
+    // check if the store's results context matches the current form context.
+    // If not, clear the store's results as they are for a different search.
+    const currentContext = getCurrentFormContext();
+    if (searchStore.resultsContext.searchId !== currentContext.searchId ||
+        searchStore.resultsContext.prompt !== currentContext.prompt ||
+        searchStore.resultsContext.mediaName !== currentContext.mediaName) {
+      searchStore.clearSearchResults();
+    }
     searchInput.value?.focus();
   });
   loadSavedSearches();
@@ -188,8 +209,8 @@ const handleSubmit = async () => {
         media_name: editableMediaName.value || null, // This is the media_name for the prompt template
       })
     });
-    
-    searchResults.value = await response.json();
+    const fetchedResults = await response.json();
+    searchStore.setSearchResults(fetchedResults, getCurrentFormContext());
   } catch (error) {
     console.error('Search failed:', error);
   } finally {
@@ -320,7 +341,7 @@ const handleCancel = () => {
   searchText.value = currentDefaultPrompt.value || '';
   editableMediaName.value = '';
   
-  searchResults.value = null;
+  searchStore.clearSearchResults(); // Clear results from the store
   previewResult.value = '';
   previewError.value = '';
   isPreviewExpanded.value = false; // Collapse preview section
@@ -348,7 +369,14 @@ const rerunSearch = async (search) => {
     if (!response.ok) {
       throw new Error('Failed to run search');
     }
-    searchResults.value = await response.json();
+    const fetchedResults = await response.json();
+    const searchContext = {
+      searchId: search.id,
+      prompt: search.prompt, // Assuming 'search' object contains the prompt
+      // If media_name was part of the saved search's parameters, load it here
+      mediaName: search.kwargs?.media_name || editableMediaName.value || null, 
+    };
+    searchStore.setSearchResults(fetchedResults, searchContext);
     emit('refresh');
   } catch (error) {
     console.error('Failed to run search:', error);
@@ -364,9 +392,16 @@ const toggleSearches = () => {
 
 const handleEdit = async (search) => {
   try {
+    // Clear previous results before loading a new search context into the form
+    // This prevents showing results from a previous search while editing a new one.
+    searchStore.clearSearchResults();
+
     await loadSearchById(search.id); // Load the selected search into the main form fields
-    // Clear previous state
-    // searchResults.value = null; // Clear existing search results
+    
+    // editableMediaName might need to be set if it's part of the 'search' object's stored parameters
+    // For now, assuming it's cleared or handled by loadSearchById if applicable
+    editableMediaName.value = search.kwargs?.media_name || '';
+
     isPreviewExpanded.value = false; // Close the prompt preview section
     nextTick(() => {
       // Highlight fields

@@ -27,16 +27,6 @@ class SettingsService:
             "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the Discovarr Media table"},
             "system_prompt": {"value": "You are a movie recommendation assistant. Your job is to suggest movies to users based on their preferences and current context.", "type": SettingType.STRING, "description": "Default system prompt to guide the model's behavior."},
         },
-        "jellyfin": {
-            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Jellyfin integration."},
-            "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL"},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key"},
-        },
-        "plex": {
-            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Plex integration."},
-            "url": {"value": "http://plex:32400", "type": SettingType.URL, "description": "Plex server URL"},
-            "api_token": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token"},
-        },
         "radarr": {
             "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key"},
@@ -263,8 +253,8 @@ class SettingsService:
             if group not in result:
                 result[group] = {}
             for name, config in group_settings.items():
-                # Only include settings where 'show' is True or not defined
-                if not config.get('show', True):
+                # Only include settings where 'hide' not defined
+                if config.get('hide'):
                     continue
 
                 actual_value = config["value"] # Default value

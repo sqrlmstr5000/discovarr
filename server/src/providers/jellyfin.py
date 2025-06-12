@@ -358,4 +358,5 @@ class JellyfinProvider(LibraryProviderBase):
             "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL"},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key"},
             "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyfin Default User to use for watch history and favorites, if not use all."},
+            "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

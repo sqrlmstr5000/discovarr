@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useToastStore } from '@/stores/toast'; // Import the toast store
 import { config } from '../config'
 
@@ -29,9 +29,62 @@ const endDate = ref('');
 let originalValues = {}
 const toastStore = useToastStore(); // Initialize the toast store
 
+const applicationSettings = computed(() => {
+  if (!settings.value) return {};
+  return Object.entries(settings.value)
+    .filter(([, groupDetails]) => { // groupName is not used here
+      const baseProvider = groupDetails.base_provider?.value;
+      return !(baseProvider === 'library' || baseProvider === 'llm');
+    })
+    .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+});
+
+const libraryProviderSettings = computed(() => {
+  if (!settings.value) return {};
+  return Object.entries(settings.value)
+    .filter(([, groupDetails]) => { // groupName is not used here
+      const baseProvider = groupDetails.base_provider?.value;
+      return baseProvider === 'library';
+    })
+    .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+});
+
+const llmProviderSettings = computed(() => {
+  if (!settings.value) return {};
+  return Object.entries(settings.value)
+    .filter(([, groupDetails]) => { // groupName is not used here
+      const baseProvider = groupDetails.base_provider?.value;
+      return baseProvider === 'llm';
+    })
+    .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+});
+
 // Helper functions for type checking
 const isNumberType = (value) => typeof value === 'number'
 const isBooleanType = (value) => typeof value === 'boolean'
+
+const isProviderConfigured = (groupName) => {
+  if (!settings.value || !settings.value[groupName]) {
+    return false; // Group doesn't exist in settings
+  }
+  const group = settings.value[groupName];
+
+  switch (groupName) {
+    case 'gemini':
+      return !!group.api_key?.value;
+    case 'ollama':
+      return !!group.base_url?.value; // Ollama primarily needs a base_url to be functional for enabling
+    case 'radarr':
+    case 'sonarr':
+    case 'plex':
+    case 'jellyfin':
+      return !!group.url?.value && !!group.api_key?.value;
+    case 'trakt':
+      return !!group.client_id?.value && !!group.client_secret?.value;
+    default:
+      return true; // For any other group or if a group doesn't match, assume it's configurable
+  }
+};
 
 // Get placeholder text for inputs
 const getPlaceholder = (group, key) => {
@@ -179,27 +232,46 @@ const traktAuthenticate = async () => {
 // Update a setting
 const updateSetting = async (group, name) => {
   // Only update if the setting's value has changed
-  if (settings.value[group][name].value === originalValues[group][name].value) {
-    return
+  // Ensure originalValues and the specific setting path exist
+  if (originalValues && originalValues[group] && originalValues[group][name] &&
+      settings.value[group][name].value === originalValues[group][name].value) {
+    return;
   }
 
   let valueToSave = settings.value[group][name].value;
+  const currentGroupDetails = settings.value[group];
 
-  // Validation: Prevent enabling both Gemini and Ollama simultaneously
-  if (name === 'enabled' && valueToSave === true) { // Check if trying to enable a setting
-    if (group === 'gemini') {
-      // Trying to enable Gemini, check if Ollama is already enabled
-      if (settings.value.ollama && settings.value.ollama.enabled && settings.value.ollama.enabled.value === true) {
-        toastStore.show('Cannot enable Gemini while Ollama is enabled. Please disable Ollama first.', 'error');
-        settings.value[group][name].value = originalValues[group][name].value; // Revert UI change
-        return;
-      }
-    } else if (group === 'ollama') {
-      // Trying to enable Ollama, check if Gemini is already enabled
-      if (settings.value.gemini && settings.value.gemini.enabled && settings.value.gemini.enabled.value === true) {
-        toastStore.show('Cannot enable Ollama while Gemini is enabled. Please disable Gemini first.', 'error');
-        settings.value[group][name].value = originalValues[group][name].value; // Revert UI change
-        return;
+  // Automatically disable other LLM providers if this one is being enabled
+  if (currentGroupDetails.base_provider?.value === 'llm' && name === 'enabled' && valueToSave === true) {
+    // Iterate over the group names of LLM providers identified by llmProviderSettings
+    for (const otherGroupName of Object.keys(llmProviderSettings.value)) {
+      if (otherGroupName === group) continue; // Skip the current group
+
+      // Get the settings for the other LLM provider group from the main settings object
+      const otherLLMGroupDetails = settings.value[otherGroupName];
+      if (otherLLMGroupDetails.enabled?.value === true) { // Check if it's enabled
+        console.log(`Attempting to disable other LLM provider: ${otherGroupName}`);
+        
+        const originalOtherProviderEnabledState = originalValues[otherGroupName]?.enabled?.value;
+        settings.value[otherGroupName].enabled.value = false; // Update local state for UI responsiveness
+
+        try {
+          // Call updateSetting for the other provider to disable it and persist the change.
+          // This recursive call will handle its own API request and originalValues update.
+          await updateSetting(otherGroupName, 'enabled'); 
+          toastStore.show(`${otherGroupName.charAt(0).toUpperCase() + otherGroupName.slice(1)} provider has been automatically disabled.`, 'info');
+        } catch (error) {
+          console.error(`Failed to automatically disable ${otherGroupName}:`, error);
+          // Revert local change for the other provider if disabling failed
+          if (originalValues[otherGroupName]?.enabled) { // Check if originalValues path exists
+            settings.value[otherGroupName].enabled.value = originalOtherProviderEnabledState;
+          }
+          toastStore.show(`Failed to automatically disable ${otherGroupName}. Please disable it manually.`, 'error');
+          
+          // Revert the current provider's enabling attempt as well
+          settings.value[group][name].value = originalValues[group][name].value;
+          return; // Stop further processing for the current setting
+        }
       }
     }
   }
@@ -218,29 +290,36 @@ const updateSetting = async (group, name) => {
       })
     })
 
-    if (!response.ok) throw new Error('Failed to update setting')
-    
+    if (!response.ok) throw new Error('Failed to update setting') 
+
+    // If the setting was successfully updated on the backend,
+    // update the local 'originalValues' to reflect this new persisted state.
+    // This is crucial for the "Only update if the setting's value has changed" check at the beginning.
     const successfullyUpdatedValue = settings.value[group][name].value;
-    // Update original value after successful save
     originalValues[group][name].value = successfullyUpdatedValue;
 
-    // If Gemini or Ollama was just enabled, fetch their models
-    if (name === 'enabled' && successfullyUpdatedValue === true) {
-      if (group === 'gemini') {
+    // If a setting for an enabled Gemini provider was changed (e.g., API key updated, or enabled set to true),
+    // attempt to fetch/refresh its models.
+    if (group === 'gemini' && settings.value.gemini?.enabled?.value === true) {
         await fetchGeminiModels();
-      } else if (group === 'ollama') {
+    } 
+    // Similarly for Ollama. This is especially relevant if 'enabled' was just set to true.
+    else if (group === 'ollama' && settings.value.ollama?.enabled?.value === true) {
         await fetchOllamaModels();
-      } else if (group === 'trakt' && name === 'enabled' && successfullyUpdatedValue === true) {
-        // If Trakt was just enabled, trigger authentication
+    }
+    // Specific action for Trakt when it's enabled
+    if (group === 'trakt' && name === 'enabled' && successfullyUpdatedValue === true) {
         toastStore.show('Trakt enabled. Please follow the authentication instructions.', 'info');
         await traktAuthenticate();
       }
-    }
-    // Optionally, show a success toast here if desired
+    // Consider a generic success toast if not an auto-disable call, or rely on UI change.
+    // For now, no explicit success toast for individual updates to keep UI less noisy.
   } catch (error) {
     console.error('Error updating setting:', error)
     // Revert to original value on error
-    settings.value[group][name].value = originalValues[group][name].value
+    if (originalValues && originalValues[group] && originalValues[group][name]) {
+      settings.value[group][name].value = originalValues[group][name].value
+    }
     toastStore.show(`Failed to update setting ${group}.${name}: ${error.message}`, 'error');
   }
 }
@@ -373,10 +452,29 @@ onMounted(async () => { // Make onMounted async
           <li>
             <a href="#section-keyboard-shortcuts" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2">Keyboard Shortcuts</a>
           </li>
+          <li>
+            <a href="#section-help" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2">Help / Instructions</a>
+          </li>
           <li v-if="settings" class="pt-3 mt-3 border-t border-gray-700">
             <a href="#section-application-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2">Application Settings</a>
             <ul class="space-y-1">
-              <li v-for="(groupSettings, groupName) in settings" :key="`toc-${groupName}`">
+              <li v-for="(groupSettings, groupName) in applicationSettings" :key="`toc-app-${groupName}`">
+                <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
+                  {{ groupName.replace(/_/g, ' ') }}
+                </a>
+              </li>
+            </ul>
+            <a href="#section-library-provider-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2 mt-2">Library Provider Settings</a>
+            <ul class="space-y-1">
+              <li v-for="(groupSettings, groupName) in libraryProviderSettings" :key="`toc-lib-provider-${groupName}`">
+                <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
+                  {{ groupName.replace(/_/g, ' ') }}
+                </a>
+              </li>
+            </ul>
+            <a href="#section-llm-provider-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2 mt-2">LLM Provider Settings</a>
+            <ul class="space-y-1">
+              <li v-for="(groupSettings, groupName) in llmProviderSettings" :key="`toc-llm-provider-${groupName}`">
                 <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
                   {{ groupName.replace(/_/g, ' ') }}
                 </a>
@@ -388,7 +486,7 @@ onMounted(async () => { // Make onMounted async
     </aside>
 
     <!-- Scrollable Main Content Area -->
-    <main class="flex-1 overflow-y-auto"> <!-- Removed ml-64 -->
+    <main class="flex-1 overflow-y-auto">
       <div class="px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto py-6 sm:py-12">
 
         <!-- Token Usage Section -->
@@ -469,14 +567,30 @@ onMounted(async () => { // Make onMounted async
           </div>
         </div>
 
-        <!-- Settings Section -->
+        <!-- Help / Instructions Section -->
+        <div id="section-help" class="mb-8">
+          <h2 class="text-2xl text-white font-semibold mb-4">Help / Instructions</h2>
+          <div class="bg-gray-900 rounded-lg p-6 shadow-md space-y-3 text-gray-300">
+            <p>
+              <strong>LLM Providers (Gemini/Ollama):</strong> Only one LLM provider (Gemini or Ollama) can be enabled at a time.
+            </p>
+            <p>Use the navigation on the left to jump to specific setting groups.</p>
+            <p>Remember to configure your API keys and URLs for services like
+              <a href="#section-settings-radarr" class="text-discovarr hover:underline">Radarr</a>,
+              <a href="#section-settings-sonarr" class="text-discovarr hover:underline">Sonarr</a>,
+              <a href="#section-settings-tmdb" class="text-discovarr hover:underline">TMDB</a>,
+              and your chosen LLM provider (e.g.,
+              <a href="#section-settings-gemini" class="text-discovarr hover:underline">Gemini</a> or
+              <a href="#section-settings-ollama" class="text-discovarr hover:underline">Ollama</a>) for full functionality.</p>
+            <!-- Add more instructions here -->
+          </div>
+        </div>
+
+        <!-- Application Settings Section -->
         <div id="section-application-settings">
           <h2 class="text-2xl text-white font-semibold mb-6">Application Settings</h2>
-        </div>
-        
-        <!-- Settings groups -->
-        <div v-if="settings" class="space-y-8">
-          <div v-for="(groupSettings, groupName) in settings" :key="groupName" :id="`section-settings-${groupName}`" class="bg-gray-900 rounded-lg p-6 shadow-md">
+          <div v-if="Object.keys(applicationSettings).length > 0" class="space-y-8">
+            <div v-for="(groupSettings, groupName) in applicationSettings" :key="groupName" :id="`section-settings-${groupName}`" class="bg-gray-900 rounded-lg p-6 shadow-md">
             <h3 class="text-xl text-white font-medium mb-4 capitalize">{{ groupName }}</h3>
 
             <div class="space-y-4">
@@ -484,6 +598,34 @@ onMounted(async () => { // Make onMounted async
                 <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
                   {{ settingName.replace(/_/g, ' ') }}
                 </label>
+                <!-- Textarea for specific settings like default_prompt -->
+                <div v-if="groupName === 'app' && settingName === 'default_prompt'">
+                  <textarea
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
+                    rows="5"
+                    :placeholder="getPlaceholder(groupName, settingName)"
+                  ></textarea>
+                  <div>Supported template variables: 
+                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
+                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
+                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
+                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
+                  </div>
+                </div>  
+                <!-- Textarea for specific settings like default_prompt -->
+                <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
+                  <textarea
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
+                    rows="5"
+                    :placeholder="getPlaceholder(groupName, settingName)"
+                  ></textarea>
+                </div>
 
                 <!-- Radarr Default Quality Profile ID Dropdown -->
                 <template v-if="groupName === 'radarr' && settingName === 'default_quality_profile_id'">
@@ -521,8 +663,133 @@ onMounted(async () => { // Make onMounted async
                   </select>
                 </template>
 
+                <!-- Other input types -->
+                <input             
+                  v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
+                  :id="groupName + '-' + settingName"
+                  v-model.number="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  type="number"
+                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                >
+                <input
+                  v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
+                  :id="groupName + '-' + settingName"
+                  v-model="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  type="checkbox"
+                  :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
+                  class="w-6 h-6 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
+                >
+                <input
+                  v-else
+                  :id="groupName + '-' + settingName"
+                  v-model="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
+                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  :placeholder="getPlaceholder(groupName, settingName)"
+                >
+                <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
+                  Please configure the required fields (e.g., URL, API Key) for this provider before enabling it.
+                </div>
+                <div class="mt-1 text-sm text-gray-500">
+                  {{ settingDetails.description }}
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Library Provider Settings Section -->
+        <div id="section-library-provider-settings" class="mt-8">
+          <h2 class="text-2xl text-white font-semibold mb-6">Library Provider Settings</h2>
+          <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-6 text-sm text-gray-400 text-center">
+            <p>Configure your library providers like Plex, Jellyfin, and Trakt here.</p>
+            <p>Ensure URLs are correct and API keys are provided for enabled services.</p>
+            <p>Note: Results are combined when multiple library providers are enabled.</p>
+            <!-- Add more specific library provider instructions here -->
+          </div>
+          <div v-if="Object.keys(libraryProviderSettings).length > 0" class="space-y-8">
+            <div v-for="(groupSettings, groupName) in libraryProviderSettings" :key="groupName" :id="`section-settings-${groupName}`" class="bg-gray-900 rounded-lg p-6 shadow-md">
+            <h3 class="text-xl text-white font-medium mb-4 capitalize">{{ groupName }}</h3>
+
+            <div class="space-y-4">
+              <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
+                <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
+                  {{ settingName.replace(/_/g, ' ') }}
+                </label>
+
+                <!-- Default User Dropdowns for Plex, Jellyfin, Trakt -->
+                <template v-if="['plex', 'jellyfin', 'trakt'].includes(groupName) && settingName === 'default_user'">
+                  <select
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value" @change="updateSetting(groupName, settingName)"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500" :disabled="loadingUsers">
+                    <option :value="null">{{ loadingUsers ? 'Loading users...' : (users.filter(u => u.source_provider === groupName).length === 0 ? `No ${groupName} users in system` : 'None (System Default)') }}</option>
+                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">{{ user.name }}</option>
+                  </select>
+                </template>
+
+                <!-- Other input types -->
+                <input             
+                  v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
+                  :id="groupName + '-' + settingName"
+                  v-model.number="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  type="number"
+                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                >
+                <input
+                  v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
+                  :id="groupName + '-' + settingName"
+                  v-model="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  type="checkbox"
+                  :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
+                  class="w-6 h-6 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
+                >
+                <input
+                  v-else
+                  :id="groupName + '-' + settingName"
+                  v-model="settingDetails.value"
+                  @change="updateSetting(groupName, settingName)"
+                  :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
+                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  :placeholder="getPlaceholder(groupName, settingName)"
+                >
+                <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
+                  Please configure the required fields (e.g., API Key, Base URL) for this provider before enabling it.
+                </div>
+                <div class="mt-1 text-sm text-gray-500">
+                  {{ settingDetails.description }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- LLM Provider Settings Section -->
+        <div id="section-llm-provider-settings" class="mt-8">
+          <h2 class="text-2xl text-white font-semibold mb-6">LLM Provider Settings</h2>
+          <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-6 text-sm text-gray-400 text-center">
+            <p>Configure your LLM providers.</p>
+            <p>Ensure URLs are correct and API keys are provided for enabled services.</p>
+            <p>Note: Only one LLM provider can be enabled at a time.</p>
+            <!-- Add more specific library provider instructions here -->
+          </div>
+          <div v-if="Object.keys(llmProviderSettings).length > 0" class="space-y-8">
+            <div v-for="(groupSettings, groupName) in llmProviderSettings" :key="groupName" :id="`section-settings-${groupName}`" class="bg-gray-900 rounded-lg p-6 shadow-md">
+            <h3 class="text-xl text-white font-medium mb-4 capitalize">{{ groupName }}</h3>
+
+            <div class="space-y-4">
+              <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
+                <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
+                  {{ settingName.replace(/_/g, ' ') }}
+                </label>
+
                 <!-- Gemini Model Dropdown -->
-                <template v-else-if="groupName === 'gemini' && settingName === 'model'">
+                <template v-if="groupName === 'gemini' && settingName === 'model'">
                   <select
                     :id="groupName + '-' + settingName"
                     v-model="settingDetails.value"
@@ -557,90 +824,6 @@ onMounted(async () => { // Make onMounted async
                   </select>
                 </template>
 
-                <!-- Textarea for specific settings like default_prompt -->
-                <div v-else-if="groupName === 'app' && settingName === 'default_prompt'">
-                  <textarea
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
-                    rows="5"
-                    :placeholder="getPlaceholder(groupName, settingName)"
-                  ></textarea>
-                  <div>Supported template variables: 
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
-                  </div>
-                </div>  
-
-                <!-- Plex Default User Dropdown -->
-                <template v-else-if="groupName === 'plex' && settingName === 'default_user'">
-                  <select
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingUsers"
-                  >
-                    <option :value="null">
-                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
-                    </option>
-                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
-                      {{ user.name }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Jellyfin Default User Dropdown -->
-                <template v-else-if="groupName === 'jellyfin' && settingName === 'default_user'">
-                  <select
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingUsers"
-                  >
-                    <option :value="null">
-                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
-                    </option>
-                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
-                      {{ user.name }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Trakt Default User Dropdown -->
-                <template v-else-if="groupName === 'trakt' && settingName === 'default_user'">
-                  <select
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingUsers"
-                  >
-                    <option :value="null">
-                      {{ loadingUsers ? 'Loading users...' : (users.length === 0 ? 'No users available in system' : 'None (System Default)') }}
-                    </option>
-                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">
-                      {{ user.name }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Textarea for specific settings like default_prompt -->
-                <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
-                  <textarea
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
-                    rows="5"
-                    :placeholder="getPlaceholder(groupName, settingName)"
-                  ></textarea>
-                </div>
-
                 <!-- Other input types -->
                 <input             
                   v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
@@ -674,6 +857,8 @@ onMounted(async () => { // Make onMounted async
               </div>
             </div>
           </div>
+        </div>
+        </div>
         </div>
       </div>
     </main>

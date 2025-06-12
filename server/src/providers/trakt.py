@@ -417,10 +417,11 @@ class TraktProvider(LibraryProviderBase):
             "client_id": {"value": None, "type": SettingType.STRING, "description": "Trakt Client ID."},
             "client_secret": {"value": None, "type": SettingType.STRING, "description": "Trakt Client Secret."},
             "default_user": {"value": None, "type": SettingType.STRING, "description": "Trakt Default User to use for watch history and favorites, if not use all."},
-            "authorization": {"value": None, "type": SettingType.STRING, "show": False, "description": "Trakt Authorization."},
+            "authorization": {"value": None, "type": SettingType.STRING, "show": False, "hide": True, "description": "Trakt Authorization."},
             "redirect_uri": {
                 "value": "urn:ietf:wg:oauth:2.0:oob", 
                 "type": SettingType.STRING, 
                 "description": "Trakt OAuth Redirect URI. 'urn:ietf:wg:oauth:2.0:oob' is common for device auth."
             },
+            "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

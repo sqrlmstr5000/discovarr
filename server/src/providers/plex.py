@@ -42,24 +42,24 @@ class PlexProvider(LibraryProviderBase):
     """
     PROVIDER_NAME = "plex"
 
-    def __init__(self, plex_url: str, plex_token: str, limit: int = 10):
+    def __init__(self, plex_url: str, plex_api_key: str, limit: int = 10):
         """
         Initializes the Plex class with API configurations.
 
         Args:
             plex_url (str): The base URL of the Plex server (e.g., http://localhost:32400).
-            plex_token (str): The X-Plex-Token for authentication.
+            plex_api_key (str): The X-Plex-Token for authentication.
             limit (int): Default limit for API requests.
         """
         self.logger = logging.getLogger(__name__)
         self.plex_url = plex_url
-        self.plex_token = plex_token
+        self.plex_api_key = plex_api_key
         self.limit = limit
         self.server: Optional[PlexServer] = None
         try:
             # plexapi.server.PlexServer can take requests.Session() object for custom configurations
             # For simplicity, we'll let it create its own.
-            self.server = PlexServer(self.plex_url, self.plex_token)
+            self.server = PlexServer(self.plex_url, self.plex_api_key)
             # Test connection by fetching server identifier or version
             self.logger.info(f"Successfully connected to Plex server: {self.server.friendlyName} (Version: {self.server.version})")
         except Unauthorized:
@@ -387,6 +387,7 @@ class PlexProvider(LibraryProviderBase):
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Plex integration."},
             "url": {"value": "http://plex:32400", "type": SettingType.URL, "description": "Plex server URL"},
-            "api_token": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token"},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token"},
             "default_user": {"value": None, "type": SettingType.STRING, "description": "Plex Default User to use for watch history and favorites, if not use all."},
+            "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

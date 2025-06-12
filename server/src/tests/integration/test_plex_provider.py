@@ -19,9 +19,9 @@ def live_plex_url() -> str:
 @pytest.fixture(scope="module")
 def live_plex_api_key() -> str:
     """Retrieves Plex API Key (Token) from environment variable."""
-    api_key = os.environ.get("PLEX_TEST_API_TOKEN") # Using API_KEY for consistency, though it's a token for Plex
+    api_key = os.environ.get("PLEX_TEST_API_KEY") # Using API_KEY for consistency, though it's a token for Plex
     if not api_key:
-        pytest.skip("PLEX_TEST_API_TOKEN environment variable not set. Skipping live Plex tests.")
+        pytest.skip("PLEX_TEST_API_KEY environment variable not set. Skipping live Plex tests.")
     return api_key
 
 @pytest.mark.integration_live # Mark tests that hit the live API
@@ -36,7 +36,7 @@ class TestPlexProviderLive(BaseLiveLibraryProviderTests):
         """
         provider = PlexProvider(
             plex_url=live_plex_url,
-            plex_token=live_plex_api_key
+            plex_api_key=live_plex_api_key
             # limit is optional and defaults in PlexProvider constructor
         )
         assert provider.server is not None, "Plex server should be connected."

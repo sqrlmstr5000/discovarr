@@ -145,7 +145,7 @@ services:
 # --- Plex Settings ---
 - PLEX_ENABLED=True # Set to True if using Plex
 - PLEX_URL=http://plex:32400
-- PLEX_API_TOKEN=your_plex_token
+- PLEX_API_KEY=your_plex_token
 
 # --- Radarr Settings ---
 - RADARR_URL=http://radarr:7878

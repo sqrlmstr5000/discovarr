@@ -59,7 +59,7 @@ class Discovarr:
         self.jellyfin_url = None
         self.plex_url = None 
         self.plex_enabled = None 
-        self.plex_token = None 
+        self.plex_api_key = None 
         self.jellyfin_api_key = None
         self.radarr_url = None
         self.radarr_api_key = None
@@ -129,7 +129,7 @@ class Discovarr:
         self.auto_media_save = self.settings.get("app", "auto_media_save")
         self.plex_enabled = self.settings.get("plex", "enabled") # Load Plex enabled status
         self.plex_url = self.settings.get("plex", "url") # Load Plex settings
-        self.plex_token = self.settings.get("plex", "api_token") # Load Plex settings
+        self.plex_api_key = self.settings.get("plex", "api_key") # Load Plex settings
         self.jellyfin_enabled = self.settings.get("jellyfin", "enabled") # Load Jellyfin enabled status
         self.jellyfin_url = self.settings.get("jellyfin", "url")
         self.jellyfin_api_key = self.settings.get("jellyfin", "api_key")
@@ -175,10 +175,10 @@ class Discovarr:
         self.jellyfin = None # Reset before potential re-init
         self.trakt = None # Reset before potential re-init
 
-        if self.plex_enabled and self.plex_url and self.plex_token:
+        if self.plex_enabled and self.plex_url and self.plex_api_key:
              self.plex = PlexProvider(
                 plex_url=self.plex_url,
-                plex_token=self.plex_token,
+                plex_api_key=self.plex_api_key,
                 limit=self.recent_limit # Use recent_limit for default Plex limit
             )
              self.logger.info("Plex service initialized.")
@@ -255,7 +255,7 @@ class Discovarr:
         if self.plex_enabled:
             if not self.plex_url:
                 raise ValueError("Plex URL is required when Plex integration is enabled.")
-            if not self.plex_token:
+            if not self.plex_api_key:
                 raise ValueError("Plex API token is required when Plex integration is enabled.")
 
         if self.radarr_url and not self.radarr_api_key:
