@@ -13,6 +13,7 @@ import InformationOutline from 'vue-material-design-icons/InformationOutline.vue
 import Send from 'vue-material-design-icons/Send.vue'; // Icon for request button
 import SearchScheduleModal from '../components/SearchScheduleModal.vue'; // Import SearchScheduleModal
 import EditMediaNameModal from '../components/EditMediaNameModal.vue'; // Import the new modal
+import ExamplePrompts from '../components/ExamplePrompts.vue'; // Import ExamplePrompts component
 import RequestModal from '../components/RequestModal.vue'; 
 import { useRouter, useRoute } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
@@ -64,6 +65,7 @@ const isPreviewExpanded = ref(false); // For collapsible preview
 const favoriteOption = ref(''); // For favorite media option
 const editableMediaName = ref('');
 const showEditMediaNameModal = ref(false);
+const showExamplePromptsModal = ref(false);
 
 const emit = defineEmits(['close', 'refresh']);
 
@@ -446,6 +448,12 @@ const handleUpdateMediaName = (newName) => {
   editableMediaName.value = newName;
   // Optionally, trigger preview update or other actions
 };
+
+const handleSelectExamplePrompt = (prompt) => {
+  searchName.value = prompt.title;
+  searchText.value = prompt.text;
+  showExamplePromptsModal.value = false; // Close modal after selection
+};
 </script>
 
 <template>
@@ -468,7 +476,17 @@ const handleUpdateMediaName = (newName) => {
                 /> 
                 </div>
             <div>
-                <label class="block text-gray-400 mb-2">Prompt</label>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-gray-400">Prompt</label>
+                  <button
+                    type="button"
+                    @click="showExamplePromptsModal = true"
+                    class="text-xs text-discovarr hover:underline focus:outline-none flex items-center"
+                    title="Show example prompts"
+                  >
+                    <InformationOutline :size="16" class="mr-1" /> Examples
+                  </button>
+                </div>
                 <textarea
                 ref="searchInput"
                 v-model="searchText"
@@ -800,6 +818,12 @@ const handleUpdateMediaName = (newName) => {
       :current-media-name="editableMediaName"
       @close="showEditMediaNameModal = false"
       @update:mediaName="handleUpdateMediaName"
+    />
+
+    <ExamplePrompts
+      :show="showExamplePromptsModal"
+      @close="showExamplePromptsModal = false"
+      @select-prompt="handleSelectExamplePrompt"
     />
     </form>
   </div>
