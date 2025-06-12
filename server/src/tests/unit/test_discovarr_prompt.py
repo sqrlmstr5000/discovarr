@@ -16,12 +16,16 @@ def test_get_prompt_basic_scenario(mocked_discovarr_instance: Discovarr):
         ("app", "default_prompt"): default_prompt_template,
         ("plex", "enabled"): True,
         ("jellyfin", "enabled"): True,
+        ("plex", "enable_media"): True,
+        ("jellyfin", "enable_media"): True,
         ("plex", "default_user"): None, # Test fetching for all Plex users
         ("jellyfin", "default_user"): None, # Test fetching for all Jellyfin users
         # Ensure default_prompt is also part of the side_effect if get_prompt relies on it
     }
     dv.default_prompt = default_prompt_template # Ensure dv.default_prompt is set for this test
     dv.settings.get.side_effect = lambda group, key, default=None: test_specific_settings.get((group, key), default)
+    dv.plex_enable_media = True # Explicitly set for the test
+    dv.jellyfin_enable_media = True # Explicitly set for the test
     dv.plex_enabled = True
     dv.jellyfin_enabled = True
 
@@ -78,11 +82,13 @@ def test_get_prompt_with_default_plex_user(mocked_discovarr_instance: Discovarr)
         ("app", "default_prompt"): default_prompt_template,
         ("plex", "enabled"): True,
         ("plex", "default_user"): "MyPlexUser",
+        ("plex", "enable_media"): True,
         ("jellyfin", "enabled"): False, # Disable Jellyfin for this test
     }
     dv.default_prompt = default_prompt_template # Ensure dv.default_prompt is set for this test
     dv.settings.get.side_effect = lambda group, key, default=None: test_specific_settings.get((group, key), default)
     dv.plex_enabled = True
+    dv.plex_enable_media = True # Explicitly set for the test
     dv.jellyfin_enabled = False
 
     mock_plex_user = LibraryUser(id="plex123", name="MyPlexUser", source_provider="plex")
@@ -106,7 +112,11 @@ def test_get_prompt_custom_template_string(mocked_discovarr_instance: Discovarr)
     dv.jellyfin_enabled = False
     dv.jellyfin = None # Explicitly set provider instance to None
     dv.settings.get.side_effect = lambda group, key, default=None: {
-        ("plex", "enabled"): False, ("jellyfin", "enabled"): False,
+        ("plex", "enabled"): False, 
+        ("plex", "enable_media"): False,
+        ("jellyfin", "enabled"): False,
+        ("jellyfin", "enable_media"): False,
+        # No need to mock enable_history here as get_prompt uses db.get_watch_history
     }.get((group, key), default)
 
 

@@ -59,12 +59,20 @@ class BaseLiveLibraryProviderTests:
         assert non_existent_user is None, "Non-existent user should return None"
 
     def test_get_recently_watched(self, live_provider: LibraryProviderBase, valid_user_id: str):
-        # LibraryProviderBase.get_recently_watched returns Optional[List[Dict[str, Any]]]
-        # Providers might return specific objects internally, but the interface contract is List[Dict]
-        # For this base test, we check the contract. Provider-specific tests can check internal object types.
-        watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=5)
+        watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=1)
         assert watched_items_raw is not None, "Expected recently watched items (raw) or an empty list"
         assert isinstance(watched_items_raw, list)
+        assert len(watched_items_raw) == 1, "Expected 1 item when limit is 1"
+        if watched_items_raw:
+            for item_dict in watched_items_raw:
+                assert isinstance(item_dict, ItemsFiltered)
+                # Add basic checks for expected keys if common across providers' raw output
+
+    def test_get_recently_watched_all(self, live_provider: LibraryProviderBase, valid_user_id: str):
+        watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=None)
+        assert watched_items_raw is not None, "Expected recently watched items (raw) or an empty list"
+        assert isinstance(watched_items_raw, list)
+        assert len(watched_items_raw) > 1, "Expected a list of more than 1 items"
         if watched_items_raw:
             for item_dict in watched_items_raw:
                 assert isinstance(item_dict, ItemsFiltered)
@@ -100,4 +108,3 @@ class BaseLiveLibraryProviderTests:
         if filtered_names:
             for name in filtered_names:
                 assert isinstance(name, str)
-

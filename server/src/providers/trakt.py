@@ -267,18 +267,30 @@ class TraktProvider(LibraryProviderBase):
         if not Trakt['oauth'].token:
             self.logger.warning("TraktProvider: get_recently_watched requires an authenticated session.")
             return None
+
+        get_kwargs = {
+            'media': None,  # All types: movies, episodes
+            'extended': 'full',
+            'pagination': False  # Fetch a single page of results
+        }
+        if limit is None:
+            # With pagination=False and per_page=None, Trakt API's default page limit applies (e.g., 10 items).
+            get_kwargs['per_page'] = None
+        else:
+            # Fetch up to 'limit' items.
+            get_kwargs['per_page'] = limit
+            # page will use its default of None (first page)
+
         try:
             # Fetch combined history (movies and episodes)
-            history_items_iter = Trakt[f"users/{user_id}/history"].get(
-                media=None, # All types: movies, episodes
-                extended='full',
-                per_page=limit,
-                pagination=False # Fetch up to 'limit' items in one go
-            )
+            history_items_iter = Trakt[f"users/{user_id}/history"].get(**get_kwargs)
             # Convert iterable to list of trakt.Object instances
             raw_watched_items = list(history_items_iter) if history_items_iter else []
-            for item in raw_watched_items:
-                self.logger.debug(f"Trakt raw item: {json.dumps(item.to_dict(), indent=2)}")
+            #
+            # Leave for manual debugging
+            #
+            #for item in raw_watched_items:
+            #    self.logger.debug(f"Trakt raw item: {json.dumps(item.to_dict(), indent=2)}")
             self.logger.info(f"Retrieved {len(raw_watched_items)} raw recently watched Trakt items for user {user_id}.")
 
             # Filter and transform to ItemsFiltered
@@ -414,14 +426,16 @@ class TraktProvider(LibraryProviderBase):
         """
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Trakt integration."},
-            "client_id": {"value": None, "type": SettingType.STRING, "description": "Trakt Client ID."},
-            "client_secret": {"value": None, "type": SettingType.STRING, "description": "Trakt Client Secret."},
-            "default_user": {"value": None, "type": SettingType.STRING, "description": "Trakt Default User to use for watch history and favorites, if not use all."},
+            "client_id": {"value": None, "type": SettingType.STRING, "description": "Trakt Client ID.", "required": True}, # Already marked
+            "client_secret": {"value": None, "type": SettingType.STRING, "description": "Trakt Client Secret.", "required": True}, # Already marked
+            "default_user": {"value": None, "type": SettingType.STRING, "description": "Trakt Default User to use for watch history and favorites, if None use all."},
             "authorization": {"value": None, "type": SettingType.STRING, "show": False, "hide": True, "description": "Trakt Authorization."},
             "redirect_uri": {
                 "value": "urn:ietf:wg:oauth:2.0:oob", 
                 "type": SettingType.STRING, 
                 "description": "Trakt OAuth Redirect URI. 'urn:ietf:wg:oauth:2.0:oob' is common for device auth."
             },
+            "enable_media": {"value": False, "type": SettingType.BOOLEAN, "show": False, "description": "This option is not implemented/available for this provider"},
+            "enable_history": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable watch history from this library provider. Used for the {{watch_history}} template variable."},
             "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

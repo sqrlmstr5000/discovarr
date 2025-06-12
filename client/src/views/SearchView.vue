@@ -35,7 +35,6 @@ const props = defineProps({
 });
 const route = useRoute();
 
-const initialPrompt = computed(() => route.query.initialPrompt || '');
 const initialMediaName = computed(() => route.query.initialMediaName || null);
 const currentLoadedSearchId = ref(props.searchId); // Local ref for the active search ID
 const searchName = ref('');
@@ -66,6 +65,7 @@ const favoriteOption = ref(''); // For favorite media option
 const editableMediaName = ref('');
 const showEditMediaNameModal = ref(false);
 const showExamplePromptsModal = ref(false);
+const selectedMediaForRequest = ref(null); // Define selectedMediaForRequest
 
 const emit = defineEmits(['close', 'refresh']);
 
@@ -75,11 +75,13 @@ const getCurrentFormContext = () => {
     searchId: currentLoadedSearchId.value,
     prompt: searchText.value,
     mediaName: editableMediaName.value || null,
+    searchName: searchName.value || null, // Add searchName to context
   };
 };
 
 const loadSearchById = async (id) => {
   try {
+    initialLoadingDone.value = false; // Reset while loading
     const response = await fetch(`${config.apiUrl}/search/${id}`);
     if (!response.ok) {
       throw new Error(`Failed to load search with ID ${id}. Status: ${response.status}`);
@@ -95,14 +97,14 @@ const loadSearchById = async (id) => {
     } else {
       console.warn(`Search data for ID ${id} was empty or null.`);
       // Fallback to defaults if search data is not sufficient
-      searchText.value = initialPrompt || currentDefaultPrompt.value;
+      searchText.value = currentDefaultPrompt.value || '';
       searchName.value = ''; // Clear name for fallback
       currentLoadedSearchId.value = null; // Clear if search not found
     }
   } catch (error) {
     console.error('Failed to load search by ID:', error);
     // Fallback to defaults on error
-    searchText.value = initialPrompt || currentDefaultPrompt.value;
+    searchText.value = currentDefaultPrompt.value || '';
   } finally {
     initialLoadingDone.value = true;
   }
@@ -125,64 +127,94 @@ const loadSavedSearches = async () => {
 
 onMounted(async () => {
   console.log("Search.vue Initial Props:", props);
+  let newContextEstablished = false; // Flag to indicate if a new search context is being set up
 
-  // Determine if we are loading a specific search or starting fresh/default
-  currentLoadedSearchId.value = props.searchId; // Initialize local ref with prop
-  console.log(`props.searchId: ${props.searchId}`)
-  console.log(`initialPrompt: ${initialPrompt.value}`)
+  // Priority 1: Explicit navigation via props.searchId
   if (props.searchId) {
-    console.log("Loading specific search by searchId")
-    await loadSearchById(props.searchId);
-  } else if (initialPrompt.value) {
-    console.log("Using prompt from query params")
-    searchText.value = initialPrompt.value;
-  } else {
-    // No searchId and no initialPrompt from query. Use default prompt.
-    // Handle potential async loading of currentDefaultPrompt from settings store.
+    console.log("Loading specific search by searchId:", props.searchId);
+    await loadSearchById(props.searchId); // This sets currentLoadedSearchId, searchText, searchName, and initialLoadingDone
+    editableMediaName.value = initialMediaName.value || ''; // Still respect initialMediaName if provided
+    newContextEstablished = true;
+  // Priority 2: Explicit navigation via initialMediaName query param (implies new search with default prompt)
+  } else if (initialMediaName.value) {
+    console.log("Using initialMediaName from query params:", initialMediaName.value);
+    editableMediaName.value = initialMediaName.value;
+    currentLoadedSearchId.value = null; 
+    searchName.value = ''; // New search, clear name
+
+    // Set searchText to default prompt, watching if not immediately available
     if (currentDefaultPrompt.value) {
       searchText.value = currentDefaultPrompt.value;
-      console.log("Using default prompt (immediately available):", searchText.value);
     } else {
-      searchText.value = ''; // Ensure searchText is empty while waiting for default prompt
-      console.log("Default prompt not immediately available or is empty. currentDefaultPrompt:", currentDefaultPrompt.value, ". Setting up watcher.");
+      searchText.value = ''; // Initialize as empty
       const unwatchDefaultPrompt = watch(currentDefaultPrompt, (newDefaultVal) => {
-        if (newDefaultVal) { // When currentDefaultPrompt gets a truthy value
-          // Only update if searchText is still empty, implying it hasn't been
-          // set by user input or other logic in the interim.
-          if (searchText.value === '') {
-            searchText.value = newDefaultVal;
-            console.log("Default prompt applied via watcher:", searchText.value);
-          } else {
-            console.log("Default prompt became available via watcher, but searchText was already modified. Current searchText:", searchText.value, "New default:", newDefaultVal);
-          }
-          unwatchDefaultPrompt(); // Important: Stop watching after the first valid update
+        if (newDefaultVal && searchText.value === '') { // Only set if still empty
+          searchText.value = newDefaultVal;
+          unwatchDefaultPrompt(); // Stop watching after applying
+        } else if (newDefaultVal) { // Default prompt loaded, but searchText was already set (e.g. by user)
+          unwatchDefaultPrompt();
+        }
+      }, { immediate: false });
+    }
+
+    newContextEstablished = true;
+    initialLoadingDone.value = true;
+  }
+  // Priority 3: Attempt to restore from store if no explicit navigation context
+  else if (searchStore.results && searchStore.results.length > 0 && searchStore.resultsContext) {
+    console.log("Attempting to restore form state from searchStore.resultsContext");
+    const storeContext = searchStore.resultsContext;
+    currentLoadedSearchId.value = storeContext.searchId;
+    searchText.value = storeContext.prompt;
+    editableMediaName.value = storeContext.mediaName || '';
+    searchName.value = storeContext.searchName || ''; // Restore searchName
+    console.log("Form state restored from store.");
+    // newContextEstablished remains false, as we are restoring.
+    initialLoadingDone.value = true;
+  } else {
+    // Priority 4: Fallback to default prompt (new context)
+    console.log("Falling back to default prompt.");
+    if (currentDefaultPrompt.value) {
+      searchText.value = currentDefaultPrompt.value;
+    } else {
+      searchText.value = '';
+      const unwatch = watch(currentDefaultPrompt, (newVal) => {
+        if (newVal && searchText.value === '') { // Only set if still empty
+          searchText.value = newVal;
+          unwatch();
+        } else if (newVal) { // Default prompt loaded, but searchText was already set by user/other
+          unwatch();
         }
       }, { immediate: false }); // immediate: false ensures we only react to changes after this setup
     }
-  }
-  console.log(`searchText: ${searchText.value}`)
-  console.log(`initialMediaName: ${initialMediaName.value}`)
-
-  // If no searchId was provided, it's either a new search or the default state
-  if (!currentLoadedSearchId.value) { 
-    initialLoadingDone.value = true; // If no searchId, initial loading is effectively done
+    editableMediaName.value = ''; // Reset for default context
+    currentLoadedSearchId.value = null;
+    searchName.value = '';
+    newContextEstablished = true;
+    initialLoadingDone.value = true;
   }
 
   nextTick(() => {
-    // editableMediaName should be set after searchText logic,
-    // as its presence doesn't dictate the prompt source.
-    if (initialMediaName.value) {
-      editableMediaName.value = initialMediaName.value || '';
-    }
+    const currentFormCtx = getCurrentFormContext();
+    console.log("Current form context for comparison:", currentFormCtx);
+    console.log("Store's results context for comparison:", searchStore.resultsContext);
 
-    // After all initial setup of form fields (searchText, currentLoadedSearchId, editableMediaName),
-    // check if the store's results context matches the current form context.
-    // If not, clear the store's results as they are for a different search.
-    const currentContext = getCurrentFormContext();
-    if (searchStore.resultsContext.searchId !== currentContext.searchId ||
-        searchStore.resultsContext.prompt !== currentContext.prompt ||
-        searchStore.resultsContext.mediaName !== currentContext.mediaName) {
-      searchStore.clearSearchResults();
+    // If a new context was explicitly established (by props.searchId, initialPrompt, or default fallback)
+    // AND this new context differs from what's in the store, then clear the store's results.
+    if (newContextEstablished) {
+      if (searchStore.resultsContext.searchId !== currentFormCtx.searchId ||
+          searchStore.resultsContext.prompt !== currentFormCtx.prompt ||
+          searchStore.resultsContext.mediaName !== currentFormCtx.mediaName ||
+          searchStore.resultsContext.searchName !== currentFormCtx.searchName) { // Compare searchName
+        console.log("New context established and differs from store. Clearing search results.");
+        searchStore.clearSearchResults();
+      } else {
+        console.log("New context established but matches store (e.g. re-navigating to same searchId). Results preserved.");
+      }
+    } else {
+      // If we restored from store (newContextEstablished is false), results are implicitly preserved
+      // because the form now matches the store's context.
+      console.log("Form restored from store or no new context established. Results preserved.");
     }
     searchInput.value?.focus();
   });
@@ -196,6 +228,7 @@ onBeforeUnmount(() => {
 const handleSubmit = async () => {
   if (!searchText.value.trim()) return;
   loading.value = true;
+  searchStore.clearSearchResults(); // Clear previous results/errors
   
   try {
     console.log(`searchText.value: ${searchText.value}`)

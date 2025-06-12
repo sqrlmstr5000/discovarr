@@ -68,12 +68,14 @@ const isProviderConfigured = (groupName) => {
     return false; // Group doesn't exist in settings
   }
   const group = settings.value[groupName];
+  const tmdbApiKeySet = !!(settings.value.tmdb && settings.value.tmdb.api_key && settings.value.tmdb.api_key.value); // Check for TMDB API key
 
   switch (groupName) {
     case 'gemini':
-      return !!group.api_key?.value;
+      return !!group.api_key?.value && tmdbApiKeySet; // Gemini needs its API key AND TMDB's
     case 'ollama':
-      return !!group.base_url?.value; // Ollama primarily needs a base_url to be functional for enabling
+      // Ollama primarily needs a base_url to be functional for enabling, AND TMDB's API key
+      return !!group.base_url?.value && tmdbApiKeySet; 
     case 'radarr':
     case 'sonarr':
     case 'plex':
@@ -307,11 +309,25 @@ const updateSetting = async (group, name) => {
     else if (group === 'ollama' && settings.value.ollama?.enabled?.value === true) {
         await fetchOllamaModels();
     }
+    // If a Radarr setting was updated and its API key is set, refresh profiles
+    else if (group === 'radarr' && settings.value.radarr?.api_key?.value) {
+        await fetchRadarrQualityProfiles();
+    }
+    // If a Sonarr setting was updated and its API key is set, refresh profiles
+    else if (group === 'sonarr' && settings.value.sonarr?.api_key?.value) {
+        await fetchSonarrQualityProfiles();
+    }
     // Specific action for Trakt when it's enabled
     if (group === 'trakt' && name === 'enabled' && successfullyUpdatedValue === true) {
         toastStore.show('Trakt enabled. Please follow the authentication instructions.', 'info');
+        // Fetch users immediately if a library provider is enabled
+        await fetchUsers();
         await traktAuthenticate();
       }
+    // Fetch users if any other library provider (Plex, Jellyfin) is enabled
+    else if (['plex', 'jellyfin'].includes(group) && name === 'enabled' && successfullyUpdatedValue === true) {
+        await fetchUsers();
+    }
     // Consider a generic success toast if not an auto-disable call, or rely on UI change.
     // For now, no explicit success toast for individual updates to keep UI less noisy.
   } catch (error) {
@@ -427,13 +443,37 @@ watch([startDate, endDate], () => {
   }
 });
 
+const atLeastOneLibraryProviderEnabled = computed(() => {
+  if (!settings.value || !libraryProviderSettings.value) return false;
+  return Object.keys(libraryProviderSettings.value).some(groupName => {
+    return settings.value[groupName]?.enabled?.value === true;
+  });
+});
+
 onMounted(async () => { // Make onMounted async
   await loadSettings(); // Await the loading of settings
-  fetchRadarrQualityProfiles();
-  fetchSonarrQualityProfiles();
-  fetchGeminiModels(); // Now this will run after settings are loaded
-  fetchOllamaModels(); // Fetch Ollama models
-  await fetchUsers(); // Fetch users
+
+  // Fetch Radarr quality profiles only if Radarr API key is set
+  if (settings.value?.radarr?.api_key?.value) {
+    fetchRadarrQualityProfiles();
+  }
+  // Fetch Sonarr quality profiles only if Sonarr API key is set
+  if (settings.value?.sonarr?.api_key?.value) {
+    fetchSonarrQualityProfiles();
+  }
+
+  // Fetch Gemini models only if Gemini is enabled
+  if (settings.value?.gemini?.enabled?.value) {
+    fetchGeminiModels();
+  }
+  // Fetch Ollama models only if Ollama is enabled
+  if (settings.value?.ollama?.enabled?.value) {
+    fetchOllamaModels();
+  }
+  // Fetch users only if at least one library provider is enabled
+  if (atLeastOneLibraryProviderEnabled.value) {
+    await fetchUsers();
+  }
   updateDatesFromRange(); // Initialize dates based on default selectedRange and fetch
 });
 </script>
@@ -571,10 +611,13 @@ onMounted(async () => { // Make onMounted async
         <div id="section-help" class="mb-8">
           <h2 class="text-2xl text-white font-semibold mb-4">Help / Instructions</h2>
           <div class="bg-gray-900 rounded-lg p-6 shadow-md space-y-3 text-gray-300">
-            <p>
-              <strong>LLM Providers (Gemini/Ollama):</strong> Only one LLM provider (Gemini or Ollama) can be enabled at a time.
-            </p>
-            <p>Use the navigation on the left to jump to specific setting groups.</p>
+            <ul class="list-disc pl-5 space-y-2">
+              <li><strong>LLM Providers (Gemini/Ollama):</strong> Only one LLM provider can be enabled at a time.</li>
+              <li>
+                LLM providers require a <a href="#section-settings-tmdb" class="text-discovarr hover:underline">TMDB API key</a> to be configured for full functionality.
+              </li>
+              <li>Use the navigation on the left to jump to specific setting groups.</li>
+            </ul>
             <p>Remember to configure your API keys and URLs for services like
               <a href="#section-settings-radarr" class="text-discovarr hover:underline">Radarr</a>,
               <a href="#section-settings-sonarr" class="text-discovarr hover:underline">Sonarr</a>,
@@ -595,106 +638,105 @@ onMounted(async () => { // Make onMounted async
 
             <div class="space-y-4">
               <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
-                <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
-                  {{ settingName.replace(/_/g, ' ') }}
-                </label>
-                <!-- Textarea for specific settings like default_prompt -->
-                <div v-if="groupName === 'app' && settingName === 'default_prompt'">
-                  <textarea
-                    :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
-                    rows="5"
-                    :placeholder="getPlaceholder(groupName, settingName)"
-                  ></textarea>
-                  <div>Supported template variables: 
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
-                    <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
+                <div v-if="settingDetails.show != false">
+                  <label :for="groupName + '-' + settingName" class="text-gray-400 capitalize">
+                    {{ settingName.replace(/_/g, ' ') }}
+                    <span v-if="settingDetails.required" class="text-red-500 ml-1">*</span>
+                  </label>
+                  <!-- Textarea for specific settings like default_prompt -->
+                  <div v-if="groupName === 'app' && settingName === 'default_prompt'">
+                    <textarea
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
+                      rows="5"
+                      :placeholder="getPlaceholder(groupName, settingName)"
+                    ></textarea>
+                    <div class="mt-2 mb-4">Supported template variables: 
+                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
+                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
+                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
+                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
+                    </div>
+                  </div>  
+                  <!-- Textarea for specific settings like system_prompt -->
+                  <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
+                    <textarea
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
+                      rows="5"
+                      :placeholder="getPlaceholder(groupName, settingName)"
+                    ></textarea>
                   </div>
-                </div>  
-                <!-- Textarea for specific settings like default_prompt -->
-                <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
-                  <textarea
+
+                  <!-- Radarr Default Quality Profile ID Dropdown -->
+                  <template v-else-if="groupName === 'radarr' && settingName === 'default_quality_profile_id'">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model.number="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                      :disabled="loadingRadarrProfiles"
+                    >
+                      <option :value="null">
+                        {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
+                      </option>
+                      <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
+                        {{ profile.name }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <!-- Sonarr Default Quality Profile ID Dropdown -->
+                  <template v-else-if="groupName === 'sonarr' && settingName === 'default_quality_profile_id'">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model.number="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                      :disabled="loadingSonarrProfiles"
+                    >
+                      <option :value="null">
+                        {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
+                      </option>
+                      <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
+                        {{ profile.name }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <!-- Other input types -->
+                  <input             
+                    v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
+                    :id="groupName + '-' + settingName"
+                    v-model.number="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    type="number"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  >
+                  <input
+                    v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
                     :id="groupName + '-' + settingName"
                     v-model="settingDetails.value"
                     @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 min-h-[80px] resize-y"
-                    rows="5"
+                    type="checkbox"
+                    class="w-6 h-6 mx-2 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
+                  >
+                  <input
+                    v-else
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
                     :placeholder="getPlaceholder(groupName, settingName)"
-                  ></textarea>
-                </div>
-
-                <!-- Radarr Default Quality Profile ID Dropdown -->
-                <template v-if="groupName === 'radarr' && settingName === 'default_quality_profile_id'">
-                  <select
-                    :id="groupName + '-' + settingName"
-                    v-model.number="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingRadarrProfiles"
                   >
-                    <option :value="null">
-                      {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
-                    </option>
-                    <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
-                      {{ profile.name }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Sonarr Default Quality Profile ID Dropdown -->
-                <template v-else-if="groupName === 'sonarr' && settingName === 'default_quality_profile_id'">
-                  <select
-                    :id="groupName + '-' + settingName"
-                    v-model.number="settingDetails.value"
-                    @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingSonarrProfiles"
-                  >
-                    <option :value="null">
-                      {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
-                    </option>
-                    <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
-                      {{ profile.name }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Other input types -->
-                <input             
-                  v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
-                  :id="groupName + '-' + settingName"
-                  v-model.number="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="number"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                >
-                <input
-                  v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="checkbox"
-                  :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
-                  class="w-6 h-6 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
-                >
-                <input
-                  v-else
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                  :placeholder="getPlaceholder(groupName, settingName)"
-                >
-                <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
-                  Please configure the required fields (e.g., URL, API Key) for this provider before enabling it.
-                </div>
-                <div class="mt-1 text-sm text-gray-500">
-                  {{ settingDetails.description }}
+                  <div class="mt-1 text-sm text-gray-500">
+                    {{ settingDetails.description }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -717,53 +759,56 @@ onMounted(async () => { // Make onMounted async
 
             <div class="space-y-4">
               <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
-                <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
-                  {{ settingName.replace(/_/g, ' ') }}
-                </label>
+                <div v-if="settingDetails.show != false">
+                  <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
+                    {{ settingName.replace(/_/g, ' ') }}
+                    <span v-if="settingDetails.required" class="text-red-500 ml-1">*</span>
+                  </label>
 
-                <!-- Default User Dropdowns for Plex, Jellyfin, Trakt -->
-                <template v-if="['plex', 'jellyfin', 'trakt'].includes(groupName) && settingName === 'default_user'">
-                  <select
+                  <!-- Default User Dropdowns for Plex, Jellyfin, Trakt -->
+                  <template v-if="['plex', 'jellyfin', 'trakt'].includes(groupName) && settingName === 'default_user'">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value" @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500" :disabled="loadingUsers">
+                      <option :value="null">{{ loadingUsers ? 'Loading users...' : (users.filter(u => u.source_provider === groupName).length === 0 ? `No ${groupName} users in system` : 'None (System Default)') }}</option>
+                      <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">{{ user.name }}</option>
+                    </select>
+                  </template>
+
+                  <!-- Other input types -->
+                  <input             
+                    v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
                     :id="groupName + '-' + settingName"
-                    v-model="settingDetails.value" @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500" :disabled="loadingUsers">
-                    <option :value="null">{{ loadingUsers ? 'Loading users...' : (users.filter(u => u.source_provider === groupName).length === 0 ? `No ${groupName} users in system` : 'None (System Default)') }}</option>
-                    <option v-for="user in users.filter(u => u.source_provider === groupName)" :key="user.id" :value="user.id">{{ user.name }}</option>
-                  </select>
-                </template>
-
-                <!-- Other input types -->
-                <input             
-                  v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
-                  :id="groupName + '-' + settingName"
-                  v-model.number="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="number"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                >
-                <input
-                  v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="checkbox"
-                  :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
-                  class="w-6 h-6 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
-                >
-                <input
-                  v-else
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                  :placeholder="getPlaceholder(groupName, settingName)"
-                >
-                <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
-                  Please configure the required fields (e.g., API Key, Base URL) for this provider before enabling it.
-                </div>
-                <div class="mt-1 text-sm text-gray-500">
-                  {{ settingDetails.description }}
+                    v-model.number="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    type="number"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  >
+                  <input
+                    v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    type="checkbox"
+                    :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
+                    class="w-6 h-6 mx-2 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
+                  >
+                  <input
+                    v-else
+                    :id="groupName + '-' + settingName"
+                    v-model="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                    :placeholder="getPlaceholder(groupName, settingName)"
+                  >
+                  <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
+                    *Required fields are missing
+                  </div>
+                  <div class="mt-1 text-sm text-gray-500">
+                    {{ settingDetails.description }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -784,75 +829,82 @@ onMounted(async () => { // Make onMounted async
 
             <div class="space-y-4">
               <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
-                <label :for="groupName + '-' + settingName" class="text-gray-400 mb-1 capitalize">
-                  {{ settingName.replace(/_/g, ' ') }}
-                </label>
+                <div v-if="settingDetails.show != false">
+                  <label :for="groupName + '-' + settingName" class="text-gray-400 pb-4 capitalize">
+                    {{ settingName.replace(/_/g, ' ') }}
+                    <span v-if="settingDetails.required" class="text-red-500 ml-1">*</span>
+                  </label>
 
-                <!-- Gemini Model Dropdown -->
-                <template v-if="groupName === 'gemini' && settingName === 'model'">
-                  <select
+                  <!-- Gemini Model Dropdown -->
+                  <template v-if="groupName === 'gemini' && settingName === 'model'">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                      :disabled="loadingGeminiModels"
+                    >
+                      <option :value="null">
+                        {{ loadingGeminiModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
+                      </option>
+                      <option v-for="modelName in geminiModels" :key="modelName" :value="modelName">
+                        {{ modelName }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <!-- Ollama Model Dropdown -->
+                  <template v-else-if="groupName === 'ollama' && settingName === 'model'">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                      :disabled="loadingOllamaModels"
+                    >
+                      <option :value="null">
+                        {{ loadingOllamaModels ? 'Loading models...' : (ollamaModels.length === 0 ? 'No models available (is Ollama enabled?)' : 'Select a model...') }}
+                      </option>
+                      <option v-for="modelName in ollamaModels" :key="modelName" :value="modelName">
+                        {{ modelName }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <!-- Other input types -->
+                  <input             
+                    v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
+                    :id="groupName + '-' + settingName"
+                    v-model.number="settingDetails.value"
+                    @change="updateSetting(groupName, settingName)"
+                    type="number"
+                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                  >
+                  <input
+                    v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
                     :id="groupName + '-' + settingName"
                     v-model="settingDetails.value"
                     @change="updateSetting(groupName, settingName)"
-                    class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingGeminiModels"
+                    type="checkbox"
+                    :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)"
+                    class="w-6 h-6 mx-2 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
                   >
-                    <option :value="null">
-                      {{ loadingGeminiModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
-                    </option>
-                    <option v-for="modelName in geminiModels" :key="modelName" :value="modelName">
-                      {{ modelName }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Ollama Model Dropdown -->
-                <template v-else-if="groupName === 'ollama' && settingName === 'model'">
-                  <select
+                  <input
+                    v-else
                     :id="groupName + '-' + settingName"
                     v-model="settingDetails.value"
                     @change="updateSetting(groupName, settingName)"
+                    :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
                     class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                    :disabled="loadingOllamaModels"
+                    :placeholder="getPlaceholder(groupName, settingName)"
                   >
-                    <option :value="null">
-                      {{ loadingOllamaModels ? 'Loading models...' : (ollamaModels.length === 0 ? 'No models available (is Ollama enabled?)' : 'Select a model...') }}
-                    </option>
-                    <option v-for="modelName in ollamaModels" :key="modelName" :value="modelName">
-                      {{ modelName }}
-                    </option>
-                  </select>
-                </template>
-
-                <!-- Other input types -->
-                <input             
-                  v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
-                  :id="groupName + '-' + settingName"
-                  v-model.number="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="number"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                >
-                <input
-                  v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'"
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  type="checkbox"
-                  class="w-6 h-6 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer"
-                >
-                <input
-                  v-else
-                  :id="groupName + '-' + settingName"
-                  v-model="settingDetails.value"
-                  @change="updateSetting(groupName, settingName)"
-                  :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'"
-                  class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                  :placeholder="getPlaceholder(groupName, settingName)"
-                >
-
-                <div class="mt-1 text-sm text-gray-500">
-                  {{ settingDetails.description }}
+                  
+                  <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
+                    *Required fields are missing
+                  </div>
+                  <div class="mt-1 text-sm text-gray-500">
+                    {{ settingDetails.description }}
+                  </div>
                 </div>
               </div>
             </div>

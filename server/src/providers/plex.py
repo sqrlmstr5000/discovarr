@@ -143,10 +143,9 @@ class PlexProvider(LibraryProviderBase):
             self.logger.error(f"Invalid Plex User ID format: {user_id}. Must be an integer.")
             return None
 
-        current_limit = limit if limit is not None else self.limit
-        
         try:
-            history_items: List[Media] = self.server.history(accountID=user_id_int, maxresults=current_limit)
+            # Pass 'limit' directly to maxresults. If limit is None, plexapi handles it as no limit.
+            history_items: List[Media] = self.server.history(accountID=user_id_int, maxresults=limit)
             
             watched_videos = [item for item in history_items if isinstance(item, (MovieHistory, EpisodeHistory))]
             raw_items_json = json.loads(toJson(watched_videos)) if watched_videos else []
@@ -243,7 +242,10 @@ class PlexProvider(LibraryProviderBase):
             poster_url_val: Optional[str] = None
             thumb_path: Optional[str] = None
             
-            self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
+            #
+            # Leave for manual debugging
+            #
+            #self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
             # Determine item type from dictionary keys (based on plexapi.utils.toJson output)
             item_type_from_dict = item.get('type') # 'movie', 'show', 'episode'
 
@@ -386,8 +388,10 @@ class PlexProvider(LibraryProviderBase):
         """
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Plex integration."},
-            "url": {"value": "http://plex:32400", "type": SettingType.URL, "description": "Plex server URL"},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token"},
-            "default_user": {"value": None, "type": SettingType.STRING, "description": "Plex Default User to use for watch history and favorites, if not use all."},
+            "url": {"value": "http://plex:32400", "type": SettingType.URL, "description": "Plex server URL", "required": True}, # Already marked
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token", "required": True}, # Already marked
+            "default_user": {"value": None, "type": SettingType.STRING, "description": "Plex Default User to use for watch history and favorites, if None use all."},
+            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{media_exclude}} template variable."},
+            "enable_history": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable watch history from this library provider. Used for the {{watch_history}} template variable."},
             "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

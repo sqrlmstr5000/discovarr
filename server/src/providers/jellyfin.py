@@ -120,7 +120,6 @@ class JellyfinProvider(LibraryProviderBase):
                 "Content-Type": "application/json",
             }
             params = {
-                "Limit": limit,
                 "Recursive": "true",
                 "Fields": "BasicSyncInfo,MediaSource",
                 "IncludeItemTypes": "Movie,Episode",
@@ -129,6 +128,9 @@ class JellyfinProvider(LibraryProviderBase):
                 "IsPlayed": "true",
                 "enableUserData": "true",
             }
+
+            if limit is not None:
+                params["Limit"] = limit
 
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
@@ -355,8 +357,10 @@ class JellyfinProvider(LibraryProviderBase):
         from services.models import SettingType 
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Jellyfin integration."},
-            "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL"},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key"},
-            "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyfin Default User to use for watch history and favorites, if not use all."},
+            "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key", "required": True},
+            "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyfin Default User to use for watch history and favorites, if None use all."},
+            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{media_exclude}} template variable."},
+            "enable_history": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable watch history from this library provider. Used for the {{watch_history}} template variable."},
             "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

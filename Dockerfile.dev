@@ -35,6 +35,9 @@ RUN npm ci
 # but COPYing it here pre-populates the image layer.
 COPY ./client/ ./
 
+# Create directories
+RUN mkdir -p /config /backups /cache
+
 # Expose ports
 # For FastAPI backend dev server
 EXPOSE 8000 

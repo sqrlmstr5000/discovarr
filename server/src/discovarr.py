@@ -52,16 +52,18 @@ class Discovarr:
         # This helps with type hinting and ensures attributes exist
         self.recent_limit = None
         self.suggestion_limit = None
-        self.test_mode = None
-        self.backup_before_upgrade = None
+        self.request_only = None
         self.default_prompt = None
         self.jellyfin_enabled = None 
+        self.jellyfin_enable_media = None
+        self.jellyfin_enable_history = None
         self.jellyfin_url = None
         self.plex_url = None 
         self.plex_enabled = None 
+        self.plex_enable_media = None
+        self.plex_enable_history = None
         self.plex_api_key = None 
         self.jellyfin_api_key = None
-        self.radarr_url = None
         self.radarr_api_key = None
         self.radarr_default_quality_profile_id = None
         self.radarr_root_dir_path = None
@@ -80,6 +82,8 @@ class Discovarr:
         self.ollama_temperature = None # 
         self.tmdb_api_key = None
         self.trakt_enabled = None
+        self.trakt_enable_media = None # Trakt doesn't really have "media" in the same sense for exclusion, but history is key.
+        self.trakt_enable_history = None
         self.trakt_client_id = None
         self.trakt_client_secret = None
         self.trakt_redirect_uri = None
@@ -99,9 +103,8 @@ class Discovarr:
         self.db_path = db_path
         self.image_cache = ImageCacheService() # Initialize ImageCacheService
         # Load backup setting first as it's needed for Database initialization
-        self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
         # Initialize Database with the backup setting
-        self.db = Database(self.db_path, backup_on_upgrade=self.backup_before_upgrade)
+        self.db = Database(self.db_path)
         
         # Now that the database is initialized by self.db,
         # we can initialize the settings in the database.
@@ -123,14 +126,17 @@ class Discovarr:
         # Load configuration values from SettingsService_
         self.recent_limit = self.settings.get("app", "recent_limit")
         self.suggestion_limit = self.settings.get("app", "suggestion_limit")
-        self.test_mode = self.settings.get("app", "test_mode")
-        self.backup_before_upgrade = self.settings.get("app", "backup_before_upgrade")
+        self.request_only = self.settings.get("app", "request_only")
         self.default_prompt = self.settings.get("app", "default_prompt")
         self.auto_media_save = self.settings.get("app", "auto_media_save")
         self.plex_enabled = self.settings.get("plex", "enabled") # Load Plex enabled status
+        self.plex_enable_media = self.settings.get("plex", "enable_media")
+        self.plex_enable_history = self.settings.get("plex", "enable_history")
         self.plex_url = self.settings.get("plex", "url") # Load Plex settings
         self.plex_api_key = self.settings.get("plex", "api_key") # Load Plex settings
         self.jellyfin_enabled = self.settings.get("jellyfin", "enabled") # Load Jellyfin enabled status
+        self.jellyfin_enable_media = self.settings.get("jellyfin", "enable_media")
+        self.jellyfin_enable_history = self.settings.get("jellyfin", "enable_history")
         self.jellyfin_url = self.settings.get("jellyfin", "url")
         self.jellyfin_api_key = self.settings.get("jellyfin", "api_key")
         self.radarr_url = self.settings.get("radarr", "url")
@@ -151,6 +157,8 @@ class Discovarr:
         self.ollama_model = self.settings.get("ollama", "model")
         self.ollama_temperature = self.settings.get("ollama", "temperature")
         self.trakt_enabled = self.settings.get("trakt", "enabled")
+        self.trakt_enable_media = self.settings.get("trakt", "enable_media") # Though less relevant for Trakt media exclusion
+        self.trakt_enable_history = self.settings.get("trakt", "enable_history")
         self.trakt_client_id = self.settings.get("trakt", "client_id")
         self.trakt_client_secret = self.settings.get("trakt", "client_secret")
         self.trakt_redirect_uri = self.settings.get("trakt", "redirect_uri")
@@ -158,11 +166,6 @@ class Discovarr:
         self.system_prompt = self.settings.get("app", "system_prompt")
         
         self.jellyfin_auth = None # This seems to be an unused attribute, keeping for now
-
-        # If DB was already initialized, and this setting affects its runtime behavior
-        # (beyond initial migration backup), we might need to update the DB instance.
-        # For now, backup_on_upgrade is used only during DB initialization.
-        # If self.db needs to be reconfigured: self.db.set_backup_preference(self.backup_before_upgrade) or re-init
 
         # Validate the loaded configuration
         try:
@@ -292,22 +295,25 @@ class Discovarr:
             self.logger.debug(f"Prompt media_name: {media_name}")
             self.logger.debug(f"Prompt template_string: {template_string}")
             # Get current movies and series from jellyfin to exclude from suggestions
-            all_media = []
-            if self.jellyfin_enabled:
+            all_media_for_exclusion = []
+            if self.jellyfin_enabled and self.jellyfin_enable_media:
+                self.logger.debug("Jellyfin media enabled, fetching for exclusion list.")
                 jellyfin_media = self.jellyfin.get_all_items_filtered(attribute_filter="Name")
-                if jellyfin_media: all_media.extend(jellyfin_media)
-            if self.plex_enabled: # Add Plex media if Plex is configured
+                if jellyfin_media: all_media_for_exclusion.extend(jellyfin_media)
+            if self.plex_enabled and self.plex_enable_media: # Add Plex media if Plex is configured and media enabled
+                self.logger.debug("Plex media enabled, fetching for exclusion list.")
                 plex_media = self.plex.get_all_items_filtered(attribute_filter="name") # ItemsFiltered uses 'name'
-                if plex_media: all_media.extend(plex_media)
+                if plex_media: all_media_for_exclusion.extend(plex_media)
                 
+            # Trakt media exclusion is not typically done this way, so self.trakt_enable_media is not used here.
             # TODO: Add support for listing out entire Trakt collection. Does that even make sense in this context?
 
-            self.logger.debug(f"{len(all_media)} titles found")
+            self.logger.debug(f"{len(all_media_for_exclusion)} titles found")
             # Get ignored suggestions to exclude as well
             all_ignored = self.db.get_ignored_media_titles()
             self.logger.debug(f"{len(all_ignored)} titles to ignore")
             # Combine lists and convert to a comma-separated string
-            all_ignored_str = ",".join(all_ignored + all_media)
+            all_ignored_str = ",".join(all_ignored + all_media_for_exclusion)
             self.logger.info("Finding similar media for: %s", media_name)
             self.logger.info("Exclude: %s", all_ignored_str)
 
@@ -318,7 +324,8 @@ class Discovarr:
             all_watch_history = []
 
             # Fetch Jellyfin
-            if self.jellyfin_enabled:
+            if self.jellyfin_enabled and self.jellyfin_enable_media: # Favorites are a type of "media" list
+                self.logger.debug("Jellyfin media enabled, fetching favorites.")
                 jellyfin_default_user_setting = self.settings.get("jellyfin", "default_user")
                 self.logger.debug(f"Jellyfin default_user setting for favorites: {jellyfin_default_user_setting}")
                 if jellyfin_default_user_setting:
@@ -345,7 +352,8 @@ class Discovarr:
                                 all_favorites.extend(user_favorites_names)
 
             # Fetch Plex
-            if self.plex_enabled:
+            if self.plex_enabled and self.plex_enable_media: # Favorites are a type of "media" list
+                self.logger.debug("Plex media enabled, fetching favorites.")
                 plex_default_user_setting = self.settings.get("plex", "default_user")
                 self.logger.debug(f"Plex default_user setting for favorites: {plex_default_user_setting}")
                 plex_user_context_id_for_api = None
@@ -379,15 +387,20 @@ class Discovarr:
                 favorites_str = ",".join(all_favorites)
                 self.logger.info(f"Favorite Media: {favorites_str}")
 
-            # Get watch history
-            self.logger.debug(f"Fetching watch history...")
-            watch_history = self.db.get_watch_history(limit=None) # Get all watch history
-            if watch_history:
-                watch_history_names = [o["title"] for o in watch_history if o["title"]]
-                all_watch_history.extend(watch_history_names)
+            # Get watch history from DB. The DB is populated by sync_watch_history,
+            # which respects the enable_history flags of providers.
+            # So, if a provider's history is disabled, it won't be in the DB to begin with.
+            # No direct check of enable_history is needed here for fetching from DB.
+            self.logger.debug(f"Fetching watch history from database for prompt...")
+            db_watch_history = self.db.get_watch_history(limit=None) # Get all watch history from DB
+            if db_watch_history:
+                watch_history_names = [o["title"] for o in db_watch_history if o["title"]]
+                # Deduplicate and sort for consistency in the prompt
+                unique_watch_history_names = sorted(list(set(watch_history_names)))
+                all_watch_history.extend(unique_watch_history_names)
 
-            self.logger.debug(f"All watch history count: {len(all_watch_history)}")
-            if len(all_watch_history) > 0:
+            self.logger.debug(f"Total unique watch history titles for prompt: {len(all_watch_history)}")
+            if all_watch_history:
                 watch_history_str = ",".join(all_watch_history)
                 self.logger.info(f"Watch History: {watch_history_str}")
 
@@ -404,142 +417,191 @@ class Discovarr:
             # Depending on desired behavior, you might return an empty string or raise the exception
             return f"Error rendering prompt: {e}"
 
-    async def get_similar_media(self, media_name: Optional[str] = None, custom_prompt: Optional[str] = None, search_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        suggestions = []
+    async def get_similar_media(self, media_name: Optional[str] = None, custom_prompt: Optional[str] = None, search_id: Optional[int] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Gets similar media suggestions from an LLM provider.
+
+        Returns:
+            Union[List[Dict[str, Any]], Dict[str, Any]]: 
+                A list of suggestion dictionaries on success, 
+                or an error dictionary {'success': False, 'message': ..., 'status_code': ...} on failure.
+        """
         template_string = self.default_prompt
         if custom_prompt:
             template_string = custom_prompt
         prompt = self.get_prompt(limit=self.suggestion_limit, media_name=media_name, template_string=template_string)
 
-        result = None
-        model = None
+        provider_result: Optional[Dict[str, Any]] = None
+        model_provider_name: Optional[str] = None
+        model_to_log: Optional[str] = None
+
         if self.gemini:
             if not self.gemini_model:
-                raise ValueError("Gemini model is required.")
-            model = self.gemini_model
-            result = await self.gemini.get_similar_media(prompt=prompt, model=model, system_prompt=self.system_prompt, temperature=self.gemini_temperature, thinking_budget=self.gemini_thinking_budget)
+                self.logger.error("Gemini model is not configured.")
+                return {'success': False, 'message': "Gemini model is not configured.", 'status_code': 500}
+            model_provider_name = "Gemini"
+            model_to_log = self.gemini_model
+            provider_result = await self.gemini.get_similar_media(
+                prompt=prompt, 
+                model=self.gemini_model, 
+                system_prompt=self.system_prompt, 
+                temperature=self.gemini_temperature, 
+                thinking_budget=self.gemini_thinking_budget
+            )
         elif self.ollama:
             if not self.ollama_model:
-                raise ValueError("Ollama model is required.")
-            model = self.ollama_model
-            result = await self.ollama.get_similar_media(prompt=prompt, model=model, system_prompt=self.system_prompt, temperature=self.ollama_temperature)
+                self.logger.error("Ollama model is not configured.")
+                return {'success': False, 'message': "Ollama model is not configured.", 'status_code': 500}
+            model_provider_name = "Ollama"
+            model_to_log = self.ollama_model
+            provider_result = await self.ollama.get_similar_media(
+                prompt=prompt, 
+                model=self.ollama_model, 
+                system_prompt=self.system_prompt, 
+                temperature=self.ollama_temperature
+            )
+        else:
+            self.logger.warning("No LLM provider (Gemini or Ollama) is enabled or configured.")
+            return {'success': False, 'message': "No LLM provider is configured.", 'status_code': 503}
 
-        if result:
-            response = result['response']
-            token_counts = result['token_counts']
-            
+        if not provider_result: # Should ideally not happen if providers return error dicts
+            self.logger.error(f"LLM provider ({model_provider_name}) returned an unexpected None result.")
+            return {'success': False, 'message': f"LLM provider ({model_provider_name}) returned None.", 'status_code': 500}
+
+        # Check if the provider_result indicates an error
+        if provider_result.get('success') is False:
+            self.logger.error(f"Error from {model_provider_name} (model: {model_to_log}): {provider_result.get('message')}")
+            return provider_result # Propagate the error dictionary
+
+        # If successful, provider_result contains 'response' and 'token_counts'
+        llm_api_response_content = provider_result.get('response')
+        token_counts = provider_result.get('token_counts')
+
+        if not llm_api_response_content or not isinstance(llm_api_response_content.get("suggestions"), list):
+            self.logger.error(f"LLM provider ({model_provider_name}) response content is missing 'suggestions' list or is malformed.")
+            self.logger.debug(f"LLM Response Content: {llm_api_response_content}")
+            return {'success': False, 'message': "LLM response malformed or missing suggestions.", 'status_code': 500}
+
+        if token_counts and search_id:
             self.db.add_search_stat(search_id, token_counts)
             self.logger.debug(f"Stored token usage stats for search {search_id}: {token_counts}")
 
-            self.logger.info("Similar Media: %s", json.dumps(response, indent=2))
-            for media in response.get("suggestions"):
-                title = media.get("title")
-                media_type = media.get("mediaType")
+        self.logger.info(f"Similar Media from {model_provider_name} (model: {model_to_log}): {json.dumps(llm_api_response_content, indent=2)}")
+        
+        suggestions_from_llm = llm_api_response_content.get("suggestions", [])
+        processed_suggestions_for_client: List[Dict[str, Any]] = []
 
-                # Lookup TMDB ID
-                tmdb_lookup = self.tmdb.lookup_media(title, media_type)
-                if tmdb_lookup:
-                    tmdb_id = tmdb_lookup.get("id")
-                    # Get media details from TMDB
-                    tmdb_media_detail = self.tmdb.get_media_detail(tmdb_id, media_type)
-
-                    # Get poster art from TMDB
-                    poster_url = None
-                    poster_url_source =  f"https://image.tmdb.org/t/p/w500{tmdb_media_detail.get('poster_path')}" 
-                    # Ensure we have a URL and an ID for caching. Only save to cache if necessary.
-                    if poster_url_source and tmdb_id and (self.auto_media_save or search_id): 
-                        poster_url = await self._cache_image_if_needed(poster_url_source, "media", tmdb_id)
-
-                    # Data validation
-                    rt_score = media.get("rt_score")
-                    if rt_score and isinstance(rt_score, str):
-                        rt_score = int(rt_score.replace("%", ""))
-
-                    # Prepare network data
-                    network_names = []
-                    if media_type == "tv" and tmdb_media_detail.get("networks"):
-                        network_names = [net.get("name") for net in tmdb_media_detail.get("networks") if net.get("name")]
-                    elif media_type == "movie":
-                        network_names = None
-
-                    # Prepare genres data
-                    genre_names = []
-                    if tmdb_media_detail.get("genres"):
-                        genre_names = [g.get("name") for g in tmdb_media_detail.get("genres")]
-
-                    release_date_val = tmdb_media_detail.get("release_date") if media_type == "movie" else tmdb_media_detail.get("last_air_date")
-
-                    # Search for existing media in database
-                    existing_media = self.db.search_media(title)
-                    if not existing_media:
-                        # Create new media entry if it doesn't exist
-                        media_data = {
-                            "title": title,
-                            "source_title": media_name,
-                            "description": media.get("description"),
-                            "similarity": media.get("similarity"),
-                            "media_type": media_type,
-                            "tmdb_id": tmdb_id,
-                            "poster_url": poster_url,
-                            "poster_url_source": poster_url_source,
-                            "rt_url": media.get("rt_url"),
-                            "rt_score": rt_score,
-                            "ignore": 0,  # Default to not ignored
-                            "media_status": tmdb_media_detail.get("status"),
-                            "release_date": release_date_val,
-                            "networks": ", ".join(network_names) if network_names else None,
-                            "genres": ", ".join(genre_names) if genre_names else None,
-                            "original_language": tmdb_media_detail.get("original_language"),
-                            "search_id": search_id,
-                        }
-                        # Save results if running an ad-hoc search with the Auto Media Save option selected or when running a saved search.
-                        if self.auto_media_save or search_id: 
-                            media_id = self.db.create_media(media_data)
-                            if media_id:
-                                self.logger.info(f"Created new media entry for {title} with ID {media_id}")
-                            else:
-                                self.logger.error(f"Failed to create media entry for {title}")
-                    else:
-                        # Update existing media entry
-                        existing_media_first = existing_media[0]
-                        self.logger.info(f"Media {existing_media_first.get('id')}:{title} already exists in database")
-                        media_data = {
-                            "title": media.get("title"),
-                            "source_title": media_name,
-                            "description": media.get("description"),
-                            "similarity": media.get("similarity"),
-                            "media_type": media_type,
-                            "tmdb_id": tmdb_id,
-                            "poster_url": poster_url,
-                            "poster_url_source": poster_url_source,
-                            "rt_url": media.get("rt_url"),
-                            "rt_score": rt_score,
-                            "media_status": tmdb_media_detail.get("status"),
-                            "release_date": release_date_val,
-                            "networks": ", ".join(network_names) if network_names else None,
-                            "genres": ", ".join(genre_names) if genre_names else None,
-                            "original_language": tmdb_media_detail.get("original_language"),
-                        }
-                        # Save results if running an ad-hoc search with the Auto Media Save option selected or when running a saved search.
-                        if self.auto_media_save or search_id: 
-                            update_success = self.db.update_media(existing_media_first.get("id"), media_data)
-                            if update_success:
-                                self.logger.info(f"Updated media entry for {title}")
-                            else:
-                                self.logger.error(f"Failed to update media entry for {title}")
-
-
-                    self.logger.debug(f"Media: {media_data}")
-                    suggestions.append(media_data)
+        for media in suggestions_from_llm:
+            title = media.get("title")
+            media_type = media.get("mediaType") # Assuming this matches your Suggestion model
             
-            if search_id:
-                now = datetime.now()
-                self.logger.debug(f"Updating Search ID: {search_id}, Last Run Date: {now}")
-                self.db.update_search_run_date(search_id=search_id, last_run_date=now)
+            if not title or not media_type:
+                self.logger.warning(f"Skipping suggestion due to missing title or mediaType: {media}")
+                continue
+            
+            # Lookup TMDB ID
+            tmdb_lookup = self.tmdb.lookup_media(title, media_type)
+            if tmdb_lookup:
+                tmdb_id = tmdb_lookup.get("id")
+                # Get media details from TMDB
+                tmdb_media_detail = self.tmdb.get_media_detail(tmdb_id, media_type)
 
-            return suggestions
-        else:
-            self.logger.error("Failed to retrieve similar media.")
+                # Get poster art from TMDB if tmdb_media_detail is not None
+                poster_url = None
+                poster_url_source =  f"https://image.tmdb.org/t/p/w500{tmdb_media_detail.get('poster_path')}" 
+                # Ensure we have a URL and an ID for caching. Only save to cache if necessary.
+                if poster_url_source and tmdb_id and (self.auto_media_save or search_id): 
+                    poster_url = await self._cache_image_if_needed(poster_url_source, "media", tmdb_id)
+
+                # Data validation
+                rt_score = media.get("rt_score")
+                if rt_score and isinstance(rt_score, str):
+                    rt_score = int(rt_score.replace("%", ""))
+
+                # Prepare network data
+                network_names = []
+                if media_type == "tv" and tmdb_media_detail and tmdb_media_detail.get("networks"):
+                    network_names = [net.get("name") for net in tmdb_media_detail.get("networks", []) if net.get("name")]
+                elif media_type == "movie":
+                    network_names = None
+
+                # Prepare genres data
+                genre_names = []
+                if tmdb_media_detail and tmdb_media_detail.get("genres"):
+                    genre_names = [g.get("name") for g in tmdb_media_detail.get("genres", [])]
+
+                release_date_val = tmdb_media_detail.get("release_date") if media_type == "movie" and tmdb_media_detail else (tmdb_media_detail.get("last_air_date") if tmdb_media_detail else None)
+
+                # Search for existing media in database
+                existing_media = self.db.search_media(title) # This returns a list
+                if not existing_media:
+                    # Create new media entry if it doesn't exist
+                    media_data = {
+                        "title": title,
+                        "source_title": media_name,
+                        "description": media.get("description"),
+                        "similarity": media.get("similarity"),
+                        "media_type": media_type,
+                        "tmdb_id": tmdb_id,
+                        "poster_url": poster_url,
+                        "poster_url_source": poster_url_source,
+                        "rt_url": media.get("rt_url"),
+                        "rt_score": rt_score if isinstance(rt_score, int) else None,
+                        "ignore": 0,  # Default to not ignored
+                        "media_status": tmdb_media_detail.get("status") if tmdb_media_detail else None,
+                        "release_date": release_date_val,
+                        "networks": ", ".join(network_names) if network_names and isinstance(network_names, list) else None,
+                        "genres": ", ".join(genre_names) if genre_names else None,
+                        "original_language": tmdb_media_detail.get("original_language"),
+                        "search_id": search_id,
+                    }
+                    # Save results if running an ad-hoc search with the Auto Media Save option selected or when running a saved search.
+                    if self.auto_media_save or search_id: 
+                        media_id = self.db.create_media(media_data)
+                        if media_id:
+                            self.logger.info(f"Created new media entry for {title} with ID {media_id}")
+                        else:
+                            self.logger.error(f"Failed to create media entry for {title}")
+                else:
+                    # Update existing media entry
+                    existing_media_first = existing_media[0]
+                    self.logger.info(f"Media {existing_media_first.get('id')}:{title} already exists in database")
+                    media_data = {
+                        "title": media.get("title"),
+                        "source_title": media_name,
+                        "description": media.get("description"),
+                        "similarity": media.get("similarity"),
+                        "media_type": media_type,
+                        "tmdb_id": tmdb_id,
+                        "poster_url": poster_url,
+                        "poster_url_source": poster_url_source,
+                        "rt_url": media.get("rt_url"),
+                        "rt_score": rt_score if isinstance(rt_score, int) else None,
+                        "media_status": tmdb_media_detail.get("status") if tmdb_media_detail else None,
+                        "release_date": release_date_val,
+                        "networks": ", ".join(network_names) if network_names and isinstance(network_names, list) else None,
+                        "genres": ", ".join(genre_names) if genre_names else None,
+                        "original_language": tmdb_media_detail.get("original_language"),
+                    }
+                    # Save results if running an ad-hoc search with the Auto Media Save option selected or when running a saved search.
+                    if self.auto_media_save or search_id: 
+                        update_success = self.db.update_media(existing_media_first.get("id"), media_data)
+                        if update_success > 0: # Peewee update returns number of rows affected
+                            self.logger.info(f"Updated media entry for {title}")
+                        else:
+                            self.logger.error(f"Failed to update media entry for {title}")
+
+                self.logger.debug(f"Media: {media_data}")
+                processed_suggestions_for_client.append(media_data)
+        
+        # This block should be outside the loop, after all suggestions are processed.
+        if search_id:
+            now = datetime.now()
+            self.logger.debug(f"Updating Search ID: {search_id}, Last Run Date: {now}")
+            self.db.update_search_run_date(search_id=search_id, last_run_date=now)
+
+        return processed_suggestions_for_client
+        # Error case is handled by returning the provider_result dictionary earlier
 
     async def process_watch_history(self) -> Any:
         """
@@ -680,7 +742,8 @@ class Discovarr:
                     watched_by=user_name,
                     last_played_date=item.last_played_date,
                     poster_url=final_poster_url,
-                    poster_url_source=url_to_cache
+                    poster_url_source=url_to_cache,
+                    source=source,
                 )
                 
             self.logger.info(f"Synced and added/updated {len(unique_items)} unique recently watched title(s) for {user_name} from {source}.")
@@ -697,7 +760,7 @@ class Discovarr:
         all_users_data: Dict[str, Dict[str, Any]] = {}
 
         # Sync Jellyfin history
-        if self.jellyfin:
+        if self.jellyfin_enabled and self.jellyfin_enable_history:
             jellyfin_users = self.jellyfin.get_users()
             if not jellyfin_users:
                 self.logger.warning("No Jellyfin users found to sync watch history.")
@@ -711,18 +774,28 @@ class Discovarr:
                         continue # user_data is LibraryUser
                     self.logger.debug(f"Syncing watch history for Jellyfin user: {user_name} (ID: {user_id})")
 
+                    # Ensure user is in the results dict, even if no items are found later
+                    all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
+
+                    history_count = self.db.get_watch_history_count_for_source("jellyfin")
+                    limit_for_provider = None 
+                    if history_count == 0:
+                        self.logger.debug(f"Jellfin watch history count={history_count}, syncing all history.")
+                    else:
+                        self.logger.debug(f"Jellyfin watch history count={history_count}, syncing last {self.recent_limit} items from watch history.")
+                        limit_for_provider =self.recent_limit
                     recently_watched_items = self.jellyfin.get_recently_watched(
-                        user_id=user_id, limit=self.recent_limit
+                        user_id=user_id, limit=limit_for_provider
                     )
                     if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
-                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "jellyfin")
+                        synced_items = await self._sync_watch_history_to_db(user_name=user_name, user_id=user_id, recently_watched_items=recently_watched_items, source="jellyfin")
                         filtered_item_names = [item.name for item in synced_items]
-                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+                        all_users_data[user_name]["recent_titles"].extend(filtered_item_names)
         else:
-            self.logger.debug("Jellyfin service not configured. Skipping Jellyfin watch history sync.")
+            self.logger.debug("Jellyfin service not configured or history sync disabled. Skipping Jellyfin watch history sync.")
 
         # Sync Plex history
-        if self.plex:
+        if self.plex_enabled and self.plex_enable_history:
             plex_users = self.plex.get_users() # These are managed accounts
             if not plex_users: # If no managed users, consider syncing for the main account if desired
                 self.logger.warning("No managed Plex users found to sync watch history.")
@@ -736,16 +809,27 @@ class Discovarr:
                         self.logger.warning(f"Skipping Plex user with missing name or id: {user_data}")
                         continue
                     self.logger.debug(f"Syncing watch history for Plex user: {user_name} (ID: {user_id})")
-                    recently_watched_items = self.plex.get_recently_watched(user_id=user_id, limit=self.recent_limit)
+
+                    # Ensure user is in the results dict, even if no items are found later
+                    all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
+
+                    history_count = self.db.get_watch_history_count_for_source("plex")
+                    limit_for_provider = None 
+                    if history_count == 0:
+                        self.logger.debug(f"Plex watch history count={history_count}, syncing all history.")
+                    else:
+                        self.logger.debug(f"Plex watch history count={history_count}, syncing last {self.recent_limit} items from watch history.")
+                        limit_for_provider =self.recent_limit
+                    recently_watched_items = self.plex.get_recently_watched(user_id=user_id, limit=limit_for_provider)
                     if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
-                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "plex")
+                        synced_items = await self._sync_watch_history_to_db(user_name=user_name, user_id=user_id, recently_watched_items=recently_watched_items, source="plex")
                         filtered_item_names = [item.name for item in synced_items]
-                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+                        all_users_data[user_name]["recent_titles"].extend(filtered_item_names)
         else:
-            self.logger.debug("Plex service not configured. Skipping Plex watch history sync.")
+            self.logger.debug("Plex service not configured or history sync disabled. Skipping Plex watch history sync.")
 
         # Sync Trakt history
-        if self.trakt:
+        if self.trakt_enabled and self.trakt_enable_history:
             trakt_users = self.trakt.get_users() # Trakt usually returns one user
             if not trakt_users:
                 self.logger.warning("No Trakt users found to sync watch history.")
@@ -755,18 +839,30 @@ class Discovarr:
                     user_name = user_data.name
                     user_id = user_data.id # Trakt user slug can be used as ID
                     self.logger.debug(f"Syncing watch history for Trakt user: {user_name} (ID: {user_id})")
-                    recently_watched_items = self.trakt.get_recently_watched(user_id=user_id, limit=self.recent_limit)
+
+                    # Ensure user is in the results dict, even if no items are found later
+                    all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
+
+                    history_count = self.db.get_watch_history_count_for_source("trakt")
+                    limit_for_provider = None 
+                    if history_count == 0:
+                        self.logger.debug(f"Trakt watch history count={history_count}, syncing all history.")
+                    else:
+                        self.logger.debug(f"Trakt watch history count={history_count}, syncing last {self.recent_limit} items from watch history.")
+                        limit_for_provider =self.recent_limit
+                    recently_watched_items = self.trakt.get_recently_watched(user_id=user_id, limit=limit_for_provider)
                     if recently_watched_items: # recently_watched_items is now List[ItemsFiltered]
-                        synced_items = await self._sync_watch_history_to_db(user_name, user_id, recently_watched_items, "trakt")
+                        synced_items = await self._sync_watch_history_to_db(user_name=user_name, user_id=user_id, recently_watched_items=recently_watched_items, source="trakt")
                         filtered_item_names = [item.name for item in synced_items]
-                        all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})["recent_titles"].extend(filtered_item_names)
+                        all_users_data[user_name]["recent_titles"].extend(filtered_item_names)
         else:
-            self.logger.debug("Trakt service not configured. Skipping Trakt watch history sync.")
+            self.logger.debug("Trakt service not configured or history sync disabled. Skipping Trakt watch history sync.")
 
         # Ensure uniqueness in recent_titles if a user exists in both systems with the same name
         for user_name_key in all_users_data:
             all_users_data[user_name_key]["recent_titles"] = sorted(list(set(all_users_data[user_name_key]["recent_titles"])))
 
+        #self.logger.debug(f"Sync Watch History Results: {json.dumps(all_users_data, indent=2)}")
         return all_users_data
 
     def request_media(self, tmdb_id: str, media_type: str, quality_profile_id: Optional[int], save_default: Optional[bool] = False) -> Optional[Dict[str, Any]]:
@@ -794,7 +890,7 @@ class Discovarr:
                 self.settings.set("radarr", "default_quality_profile_id", quality_profile_id)
                 # self.radarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.radarr.add_movie(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.test_mode, root_dir_path=self.radarr_root_dir_path)
+            request = self.radarr.add_movie(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.request_only, root_dir_path=self.radarr_root_dir_path)
             self.logger.debug(f"Radarr Add Movie Response: {json.dumps(request.data, indent=2)}")
         elif media_type == "tv":
             if not actual_quality_profile_id_to_use: # Handles None or 0
@@ -805,7 +901,7 @@ class Discovarr:
                 self.settings.set("sonarr", "default_quality_profile_id", quality_profile_id)
                 # self.sonarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.sonarr.add_series(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.test_mode, root_dir_path=self.sonarr_root_dir_path)
+            request = self.sonarr.add_series(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.request_only, root_dir_path=self.sonarr_root_dir_path)
         else:
             self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
             return None

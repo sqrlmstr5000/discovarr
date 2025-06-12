@@ -4,6 +4,7 @@
 python -m venv ~/venv/discovarr
 source ~/venv/discovarr/bin/activate
 pip install -r server/src/requirements.txt
+pip install -r server/src/tests/requirements.txt
 ```
 
 ## Run Tests

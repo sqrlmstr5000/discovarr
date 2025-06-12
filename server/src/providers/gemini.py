@@ -59,7 +59,7 @@ class GeminiProvider(LLMProviderBase):
         """
         if not self.gemini_api_key:
             self.logger.error("Gemini API Key is not configured.")
-            return None
+            return {'success': False, 'message': "Gemini API Key is not configured.", 'status_code': 500}
         
         thinking_budget = kwargs.get('thinking_budget', 0.0)
 
@@ -91,18 +91,25 @@ class GeminiProvider(LLMProviderBase):
             self.logger.debug(f"Token usage stats: {token_counts}")
             
             return {
+                'success': True, 
                 'response': gemini_response,
                 'token_counts': token_counts
             }
         except json.JSONDecodeError:
-            error_message = "Gemini API returned non-JSON response."
+            # This happens if response.text is not valid JSON after a successful HTTP call
+            error_message = "Gemini API returned non-JSON or malformed JSON response."
             self.logger.error(error_message)
-            self.logger.debug(response.text)
-            return None
+            self.logger.debug(f"Gemini response text: {response.text if 'response' in locals() else 'Response object not available'}")
+            return {'success': False, 'message': error_message, 'status_code': 500}
+        # The general Exception below will catch specific genai.types exceptions
+        # such as BlockedPromptException, StopCandidateException, InternalServerError,
+        # DeadlineExceededError, and other GenerativeAIException types.
+        # Their specific error messages will be captured by str(e).
+        # We will use a default status_code of 500 for these.
         except Exception as e:
-            error_message = f"Gemini API error: {e}"
-            self.logger.exception(error_message)  # Log the exception
-            return None
+            error_message = f"Gemini API general error: {e}"
+            self.logger.exception(error_message)  # Log the full exception
+            return {'success': False, 'message': str(e), 'status_code': 500} # Return a simple string message
 
     async def get_models(self) -> Optional[List[str]]:
         """
@@ -143,7 +150,7 @@ class GeminiProvider(LLMProviderBase):
         """
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key"},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key", "required": True},
             "model": {"value": "gemini-1.5-flash-latest", "type": SettingType.STRING, "description": "Gemini model name (e.g., gemini-1.5-flash-latest, gemini-1.5-pro-latest)."},
             "thinking_budget": {"value": 1024.0, "type": SettingType.FLOAT, "description": "Gemini thinking budget (0 to disable, min 1024 if enabled, max 24576)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Values typically range from 0.0 to 2.0."},

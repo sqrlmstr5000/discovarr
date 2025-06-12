@@ -76,6 +76,7 @@ class WatchHistory(PeeweeBaseModel):
     media_type = CharField(null=False)
     watched_by = CharField(null=False)
     last_played_date = DateTimeField(null=False)
+    source = CharField(null=False)
     poster_url = CharField(null=True)
     poster_url_source = CharField(null=True)
     processed = BooleanField(default=False)

@@ -9,7 +9,7 @@
           </button>
         </div>
 
-        <div class="space-y-3 max-h-[60vh] overflow-y-auto">
+        <div class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 md:pr-3">
           <div
             v-for="(prompt, index) in examplePrompts"
             :key="index"

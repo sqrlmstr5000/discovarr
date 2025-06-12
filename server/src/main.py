@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from typing import Optional, Union, Dict, Any 
+from fastapi.responses import FileResponse
 from discovarr import Discovarr
 from pydantic import BaseModel
 import json
@@ -391,8 +392,19 @@ async def gemini_similar_media_by_search(
     try:
         search = discovarr.db.get_search(search_id)
         if not search:
-            raise HTTPException(status_code=404, detail="Search not found")
-        return await discovarr.get_similar_media(media_name=None, custom_prompt=search["prompt"], search_id=search_id)
+            raise HTTPException(status_code=404, detail=f"Search with ID {search_id} not found")
+        
+        result = await discovarr.get_similar_media(media_name=None, custom_prompt=search["prompt"], search_id=search_id)
+        
+        if isinstance(result, dict) and result.get('success') is False:
+            status_code = result.get('status_code', 500)
+            message = result.get('message', f"Unknown error from LLM provider during saved search {search_id}.")
+            logger.error(f"Error running saved search {search_id}: {message} (Status: {status_code})")
+            raise HTTPException(status_code=status_code, detail=message)
+        
+        return result # List of suggestions
+    except HTTPException: # Re-raise if it's already an HTTPException
+        raise
     except Exception as e:
         logger.error(f"Error running saved search: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -420,7 +432,15 @@ async def gemini_similar_media(
     Endpoint to find media similar to the given media name using the Gemini API.
     Used for the default recently watched search.
     """
-    return await discovarr.get_similar_media(media_name)
+    result = await discovarr.get_similar_media(media_name)
+    if isinstance(result, dict) and result.get('success') is False:
+        status_code = result.get('status_code', 500)
+        message = result.get('message', f"Error processing media name {media_name}.")
+        logger.error(f"Error for media name {media_name}: {message} (Status: {status_code})")
+        raise HTTPException(status_code=status_code, detail=message)
+    return result # List of suggestions
+
+
 
 @api_app.post("/gemini/similar_media_custom")
 async def gemini_similar_media_with_prompt(
@@ -438,8 +458,17 @@ async def gemini_similar_media_with_prompt(
     logger.info(f"Received custom prompt request: {request.prompt}")
     try:
         result = await discovarr.get_similar_media(media_name=request.media_name, custom_prompt=request.prompt)
+        
+        if isinstance(result, dict) and result.get('success') is False: # Check our error structure
+            status_code = result.get('status_code', 500)
+            message = result.get('message', "Unknown error from LLM provider.")
+            logger.error(f"Error from get_similar_media: {message} (Status: {status_code})")
+            raise HTTPException(status_code=status_code, detail=message)
+        
         logger.info(f"Successfully processed custom prompt")
-        return result
+        return result # This should be the list of suggestions
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
     except Exception as e:
         logger.error(f"Error processing custom prompt: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1060,12 +1089,38 @@ async def shutdown_event():
 app.mount("/api", api_app)
 
 # Mount the /cache directory to serve cached images
-cache_dir = Path("/cache") # Define the cache directory path
-app.mount("/cache", StaticFiles(directory=cache_dir), name="cache")
+cache_dir = Path("/cache")
+if cache_dir.is_dir(): # Dockerfile creates this, so it should exist
+    app.mount("/cache", StaticFiles(directory=cache_dir), name="cache")
+else:
+    logger.warning(f"Cache directory {cache_dir} not found. /cache endpoint will not be available.")
 
 # Mount static files for the frontend (Vue.js app)
 # This assumes your Dockerfile copies the client's 'dist' output to 'server/static'
 # and main.py is in 'server/src/'
 static_files_dir = Path(__file__).parent.parent / "static"
-#static_files_dir = "/app/client/public"
-app.mount("/", StaticFiles(directory=static_files_dir, html=True), name="static_root")
+
+# Serve the 'assets' directory (JS, CSS, images from Vite build)
+assets_sub_dir = static_files_dir / "assets"
+if assets_sub_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=assets_sub_dir), name="vite_assets")
+else:
+    logger.warning(f"Vite assets directory {assets_sub_dir} not found. Frontend assets might not load.")
+
+@app.get("/logo.png", include_in_schema=False)
+async def logo():
+    file_path = static_files_dir / "logo.png"
+    if file_path.is_file():
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="logo.png not found")
+
+# Add other root static files here if needed, e.g., manifest.json, robots.txt, etc.
+
+# Catch-all route to serve index.html for SPA routing
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_vue_app(request: Request, full_path: str):
+    index_html_path = static_files_dir / "index.html"
+    if not index_html_path.is_file():
+        logger.error(f"SPA index.html not found at {index_html_path}")
+        raise HTTPException(status_code=500, detail="SPA frontend is not built or not found.")
+    return FileResponse(index_html_path)

@@ -22,25 +22,24 @@ class SettingsService:
             "default_prompt": {"value": _DEFAULT_PROMPT_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
             "recent_limit": {"value": 10, "type": SettingType.INTEGER, "description": "Number of recent items to fetch"},
             "suggestion_limit": {"value": 20, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
-            "test_mode": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing when requesting media from Radarr and Sonarr to False. This won't download anything just add the media."},
-            "backup_before_upgrade": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically backup the database before running migrations/upgrades."},
+            "request_only": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing to False when requesting media from Radarr and Sonarr. This won't start a search just add the media."},
             "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the Discovarr Media table"},
             "system_prompt": {"value": "You are a movie recommendation assistant. Your job is to suggest movies to users based on their preferences and current context.", "type": SettingType.STRING, "description": "Default system prompt to guide the model's behavior."},
         },
         "radarr": {
-            "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL"},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key"},
+            "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key", "required": True},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
             "root_dir_path": {"value": "/movies", "type": SettingType.STRING, "description": "Root directory path for Radarr"},
         },
         "sonarr": {
-            "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL"},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key"},
+            "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key", "required": True},
             "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
             "root_dir_path": {"value": "/tv", "type": SettingType.STRING, "description": "Root directory path for Sonarr"},
         },
         "tmdb": {
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API key"},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API key", "required": True},
         },
         
     }
@@ -260,6 +259,8 @@ class SettingsService:
                 actual_value = config["value"] # Default value
                 description = config["description"]
                 setting_type = config["type"]
+                show = config.get("show", True)
+                required = config.get("required", False) # Get the required flag
                 
                 setting = settings.get((group, name))
                 if setting and setting.value is not None:
@@ -267,7 +268,10 @@ class SettingsService:
                 
                 result[group][name] = {
                     "value": actual_value,
-                    "description": description
+                    "description": description,
+                    "show": show,
+                    "required": required, # Pass it to the frontend
+                    "type": setting_type.value
                 }
         return result
 

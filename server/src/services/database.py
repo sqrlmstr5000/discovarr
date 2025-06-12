@@ -17,15 +17,13 @@ class Database:
     A class to handle database operations using Peewee ORM.
     """
 
-    def __init__(self, db_path: str, backup_on_upgrade: bool = True):
+    def __init__(self, db_path: str):
         """
         Initialize database configuration.
 
         Args:
             db_path (str): Path to the SQLite database file
-            backup_on_upgrade (bool): Whether to backup the database before migrations.
         """
-        self.backup_on_upgrade = backup_on_upgrade
         self.logger = logging.getLogger(__name__)
         self.db_path = db_path
         self.backup_service = BackupService(logger=self.logger)
@@ -100,12 +98,9 @@ class Database:
 
             self.logger.debug(f"Found {len(applicable_migrations)} applicable migrations to run")
             if len(applicable_migrations) > 0:
-                if self.backup_on_upgrade:
-                    self.logger.info("Database backup before migrations is enabled.")
-                    self.logger.info("Attempting to backup database before migrations as per settings...")
-                    self.backup_service.backup_db(db_path_str=self.db_path, name=f"old", system_backup=True)
-                else:
-                    self.logger.debug("Skipping database backup before migrations as per settings.")
+                self.logger.info("Database backup before migrations is enabled.")
+                self.logger.info("Attempting to backup database before migrations as per settings...")
+                self.backup_service.backup_db(db_path_str=self.db_path, name=f"old", system_backup=True)
             else:
                 self.logger.debug("No migrations to run, skipping migration process.")
                 return
@@ -247,7 +242,7 @@ class Database:
             self.logger.error(f"Error deleting media entry by TMDB ID {tmdb_id}: {e}")
             return False
 
-    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str, poster_url: Optional[str] = None, poster_url_source: Optional[str] = None) -> bool:
+    def add_watch_history(self, title: str, id: str, media_type: str, watched_by: str, last_played_date: str, source: Optional[str] = None, poster_url: Optional[str] = None, poster_url_source: Optional[str] = None) -> bool:
         """
         Add or update a watch history entry.
         Assumes WatchHistory model has fields for media_jellyfin_id and media_type.
@@ -299,6 +294,7 @@ class Database:
                 existing_entry.media_type = media_type # Update type
                 existing_entry.media_id = id # This is either the TMDB or JellyfinID
                 existing_entry.updated_at = datetime.now()
+                existing_entry.source = source
                 existing_entry.poster_url = poster_url
                 existing_entry.poster_url_source = poster_url_source
                 existing_entry.save()
@@ -310,6 +306,7 @@ class Database:
                     media_type=media_type,
                     watched_by=watched_by,
                     last_played_date=dt_last_played_date_utc,
+                    source=source,
                     poster_url=poster_url,
                     poster_url_source=poster_url_source,
                 )
@@ -440,6 +437,24 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error retrieving watch history: {e}")
             return []
+
+    def get_watch_history_count_for_source(self, source: str) -> int:
+        """
+        Get the count of watch history entries for a specific source.
+
+        Args:
+            source (str): The source provider name (e.g., 'plex', 'jellyfin', 'trakt').
+
+        Returns:
+            int: The number of watch history entries for the given source.
+        """
+        try:
+            count = WatchHistory.select().where(WatchHistory.source == source).count()
+            self.logger.debug(f"Found {count} watch history entries for source '{source}'.")
+            return count
+        except Exception as e:
+            self.logger.error(f"Error retrieving watch history count for source '{source}': {e}")
+            return 0
 
     def delete_watch_history_item(self, history_item_id: int) -> bool:
         """

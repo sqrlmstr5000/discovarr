@@ -25,22 +25,18 @@ def mocked_discovarr_instance(tmp_path):
 
     # This mock handles SettingsService.get calls specifically during Discovarr.__init__
     def mock_settings_get_during_discovarr_init(group, key, default=None):
-        if group == "app" and key == "backup_before_upgrade":
-            return True # Provide a default for this specific call
-        # For other calls during init, returning default or None is usually safe
-        # as dv.settings will be fully mocked after Discovarr instantiation.
         return default
 
     # Patch all external service initializations and critical methods
     with patch.object(ActualSettingsService, '_initialize_settings', return_value=None), \
          patch.object(ActualSettingsService, 'get', side_effect=mock_settings_get_during_discovarr_init), \
-         patch('plugins.plex.PlexProvider.__init__', return_value=None), \
-         patch('plugins.jellyfin.JellyfinProvider.__init__', return_value=None), \
-         patch('plugins.trakt.TraktProvider.__init__', return_value=None), \
+         patch('providers.plex.PlexProvider.__init__', return_value=None), \
+         patch('providers.jellyfin.JellyfinProvider.__init__', return_value=None), \
+         patch('providers.trakt.TraktProvider.__init__', return_value=None), \
          patch('services.radarr.Radarr.__init__', return_value=None), \
          patch('services.sonarr.Sonarr.__init__', return_value=None), \
-         patch('plugins.gemini.GeminiProvider.__init__', return_value=None), \
-         patch('plugins.ollama.OllamaProvider.__init__', return_value=None), \
+         patch('providers.gemini.GeminiProvider.__init__', return_value=None), \
+         patch('providers.ollama.OllamaProvider.__init__', return_value=None), \
          patch('services.tmdb.TMDB.__init__', return_value=None), \
          patch('services.database.Database._run_migrations', return_value=None), \
          patch('services.image_cache.ImageCacheService.__init__', return_value=None):
@@ -83,7 +79,15 @@ def mocked_discovarr_instance(tmp_path):
     # Set enabled flags based on how get_prompt checks them (instance attributes)
     # These will be typically overridden by individual tests.
     dv.plex_enabled = False
+    dv.plex_enable_media = False
+    dv.plex_enable_history = False
+
     dv.jellyfin_enabled = False
+    dv.jellyfin_enable_media = False
+    dv.jellyfin_enable_history = False
+
     dv.trakt_enabled = False
+    dv.trakt_enable_media = False
+    dv.trakt_enable_history = False
 
     return dv

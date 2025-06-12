@@ -62,7 +62,7 @@ class OllamaProvider(LLMProviderBase):
         """
         if not self.client:
             self.logger.error("Ollama client is not initialized.")
-            return None
+            return {'success': False, 'message': "Ollama client is not initialized.", 'status_code': 500}
 
         # Ollama chat endpoint usually expects a system message.
         if system_prompt is None:
@@ -96,15 +96,17 @@ class OllamaProvider(LLMProviderBase):
             self.logger.debug(f"Ollama token usage: {token_counts}")
 
             return {
+                'success': True, 
                 'response': parsed_json_response,
                 'token_counts': token_counts
             }
         except json.JSONDecodeError:
-            self.logger.error(f"Ollama API returned non-JSON or malformed JSON response: {ollama_response_content}")
-            return None
+            self.logger.error(f"Ollama API returned non-JSON or malformed JSON response: {ollama_response_content if 'ollama_response_content' in locals() else 'Response content not available'}")
+            return {'success': False, 'message': "Ollama API returned non-JSON response.", 'status_code': 500}
         except Exception as e:
-            self.logger.exception(f"Ollama API error: {e}")
-            return None
+            error_message = f"Ollama API general error: {e}"
+            self.logger.exception(error_message) # Log the full exception
+            return {'success': False, 'message': str(e), 'status_code': 500} # Return a simple string message
 
     async def get_models(self) -> Optional[List[str]]:
         """Lists available models from the Ollama server."""
@@ -130,7 +132,7 @@ class OllamaProvider(LLMProviderBase):
         """
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Ollama integration."},
-            "base_url": {"value": "http://ollama:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434)."},
+            "base_url": {"value": "http://ollama:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434).", "required": True},
             "model": {"value": "llama3", "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
             "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
