@@ -108,38 +108,45 @@ class Database:
             # Run each migration file
             for migration_file in applicable_migrations:
                 self.logger.debug(f"Processing migration file: {migration_file.name}")
-                
-                self.logger.info(f"Applying migration {migration_file.name}")
-                
+
+                try:
+                    # Extract the version for the current migration file
+                    current_file_version = int(migration_file.stem.split('_')[0])
+                except ValueError:
+                    self.logger.error(f"Could not parse version from migration file {migration_file.name}. Skipping.")
+                    continue
+
+                self.logger.info(f"Applying migration {migration_file.name} (Version: {current_file_version})")
+
                 # Import and run migration
                 spec = importlib.util.spec_from_file_location(
-                    f"migration_{version}", 
+                    f"migration_{current_file_version}",
                     migration_file
                 )
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                
+
                 # Execute migration in a transaction
                 with database.atomic():
                     try:
                         database.execute_sql('PRAGMA foreign_keys=OFF;')
-                        self.logger.debug(f"Starting migration {version}")
+                        self.logger.debug(f"Starting migration {current_file_version}")
                         module.upgrade(migration.migrator)
-                        self.logger.debug(f"Migration {version} code executed successfully")
-                        
+                        self.logger.debug(f"Migration {current_file_version} code executed successfully")
+
                         # Update the version in migrations table
-                        migration.set_version(version)
-                        self.logger.debug(f"Migration {version} version recorded")
+                        migration.set_version(current_file_version)
+                        self.logger.debug(f"Migration {current_file_version} version recorded")
                         database.execute_sql('PRAGMA foreign_keys=ON;')
-                        
-                        self.logger.info(f"Successfully applied migration {version}")
+
+                        self.logger.info(f"Successfully applied migration {current_file_version}")
                     except Exception as e:
-                        self.logger.error(f"Failed to apply migration {version}: {e}")
+                        self.logger.error(f"Failed to apply migration {current_file_version}: {e}")
                         database.execute_sql('PRAGMA foreign_keys=ON;')
                         raise
-                            
+
             self.logger.info("Database migrations complete")
-            
+
         except Exception as e:
             self.logger.error(f"Error running migrations: {e}")
             raise
