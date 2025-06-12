@@ -24,11 +24,25 @@ With Discovarr, you can:
   <img src=".assets/settings_page.png" alt="Settings Page" width="200"/>
 </a>
 
+## Supported Providers
+
+*   **Media Servers:**
+    *   Jellyfin
+    *   Plex
+*   **Watch History Sync:**
+    *   Trakt.tv
+*   **Downloaders:**
+    *   Radarr (Movies)
+    *   Sonarr (TV Shows)
+*   **LLM:**
+    *   Google Gemini
+    *   Ollama (for local models)
 ## Key Features
 
 *   **Media Server Integration:**
     *   Seamlessly connect to **Jellyfin** and **Plex** to fetch user lists, watch history, and library content.
     *   Sync watch history across multiple users from both platforms.
+    *   Support for **Trakt.tv** to sync watch history.
 *   **Downloader Integration:**
     *   Integrate with **Radarr** for movie requests and **Sonarr** for TV show requests.
     *   Manage quality profiles for downloads.
@@ -36,6 +50,7 @@ With Discovarr, you can:
     *   Utilize **Google Gemini AI** to generate personalized movie and TV show recommendations.
     *   Customize prompts and exclude existing media or ignored titles from suggestions. Prompts support templating with dynamic variables. 
     *   Leverage your "favorites" from Jellyfin/Plex to influence recommendations.
+    *   Support for local AI models via **Ollama**.
     *   Integrates with TMDB API to pull metadata for suggested title. 
 *   **Automated Workflows:**
     *   Schedule job to automatically sync watch history.
@@ -50,6 +65,7 @@ With Discovarr, you can:
     *   Save and manage custom search prompts for AI recommendations.
     *   Run saved searches to get fresh suggestions.
     *   Preview rendered prompts before execution.
+    *   Schedule custom searches to run automatically.
 *   **User Interface:**
     *   A FastAPI-based backend provides a robust API for all functionalities. 
     *   A frontend UI to interact with the system. Based on Vite + Vue.js + Tailwind CSS.
@@ -76,7 +92,7 @@ With Discovarr, you can:
 
 ## Background
 
-The original intent was to write a script to generate a prompt that gave me recommendations that were not in my media library. After I got that working I decided to turn this into a full application. Code is 75% AI generated with lots of tweaking and polish to make it work well. Overall I'm happy with the result and find it very useful for media discovery and recommendations. Hope you find it useful as well!
+The original intent was to write a script to generate a prompt that gave me recommendations that were not in my media library. After I got that working I decided to turn this into a full application. Hope you find it useful as well!
 
 ## Scheduled Tasks
 - The `sync_watch_histry` job that runs at midnight every night to sync the watch history for each user to the `watchhistory` table. This job can be triggered manually on the Watch History tab. It uses the `app.recent_limit` setting to control how many items for each user to sync. 
@@ -87,15 +103,12 @@ The original intent was to write a script to generate a prompt that gave me reco
 - Searches support various template variables like `{{media_name}}` `{{limit}}` `{{media_exclude}}` `{{favorites}}` that will be auto-populated at runtime. `{{media_name}}` is used to populate the Source column linking recommendations to the source title. Use the Preview button to preview the generated prompt before submitting. 
 - The Search button next to items in Watch History or Home will navigate to the Search page and auto-populate the `{{media_name}}` variable accordingly.
 
-## TODO
+## Possible Roadmap
 - Integration with other AI providers like OpenAI, Claude, etc. 
     - Gemini was choosen due to their generous free tier. 
-- Unit tests. 
-    - Once I lock in the feature set I'll write tests for all the critical paths
-- Improve Plex integration. 
-    - I use Jellyfin so that gets first class support. The Plex API is rather jank so there may be issues. 
 - Overseer and Jellyseer integration. 
     - I don't use these but would be willing to consider supporting them. 
+- SmartCollections using LLM directly or potentially a RAG vector search with LangFlow
 
 ## Docker Compose Example
 
