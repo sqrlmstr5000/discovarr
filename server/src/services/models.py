@@ -72,7 +72,7 @@ class Media(PeeweeBaseModel):
 
 class WatchHistory(PeeweeBaseModel):
     title = CharField(null=False)
-    media_id = CharField(null=False)
+    media_id = CharField(null=True)
     media_type = CharField(null=False)
     watched_by = CharField(null=False)
     last_played_date = DateTimeField(null=False)

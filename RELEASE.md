@@ -21,11 +21,13 @@ TODO
 ## Commit Changes
 ```
 git commit -m 'Release 2.3.1'
+git push
 git checkout main
-git merge devel
+git merge dev
 
 # Only tag releases as this triggers a git workflow (.github/workflows/*)
 git tag v2.3.1
 git push origin v2.3.1
 git push origin main
+git checkout dev
 ```

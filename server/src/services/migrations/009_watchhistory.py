@@ -3,7 +3,7 @@ from peewee import *
 from playhouse.migrate import migrate as run_migrations, SchemaMigrator
 
 def upgrade(migrator: SchemaMigrator):
-    media_id = CharField(null=False)
+    media_id = CharField(null=True)
 
     run_migrations(
         migrator.add_column('watchhistory', 'media_id', media_id),
