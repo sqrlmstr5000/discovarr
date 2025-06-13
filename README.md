@@ -10,7 +10,7 @@ With Discovarr, you can:
 - Easily request new movies and TV shows through Radarr and Sonarr.
 - Manage and customize search prompts for AI-driven recommendations.
 - Schedule automated tasks for syncing history and processing suggestions.
-- View and manage your media library, including active and ignored items.
+- View and manage your suggestions, including active and ignored items.
 
 ### Screenshots
 

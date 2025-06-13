@@ -737,7 +737,7 @@ class Discovarr:
 
                 self.db.add_watch_history(
                     title=item.name,
-                    id=item.id,
+                    media_id=item.id,
                     media_type=item.type,
                     watched_by=user_name,
                     last_played_date=item.last_played_date,
