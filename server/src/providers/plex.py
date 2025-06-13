@@ -252,25 +252,30 @@ class PlexProvider(LibraryProviderBase):
             if item_type_from_dict == 'episode':
                 media_name = item.get('grandparentTitle') # Show title
                 key = item.get('grandparentKey')
-                consolidated_media_id = str(key.split('/')[-1]) 
                 output_media_type = "tv" 
                 thumb_path = item.get('grandparentThumb')
             elif item_type_from_dict == 'show': 
                 media_name = item.get('title')
                 key = item.get('key')
-                consolidated_media_id = str(key.split('/')[-1]) 
                 output_media_type = "tv"
                 thumb_path = item.get('thumb')
             elif item_type_from_dict == 'movie': 
                 media_name = item.get('title')
                 key = item.get('key')
-                consolidated_media_id = str(key.split('/')[-1]) 
                 output_media_type = "movie"
                 thumb_path = item.get('thumb')
             else:
                 self.logger.debug(f"Skipping history item with unhandled dict type '{item_type_from_dict}': {item.get('title', 'Unknown Item')}")
                 continue
-            
+
+            if key:
+                try:
+                    # Extract the last part of the key as the ID
+                    consolidated_media_id = str(key.split('/')[-1])
+                except (AttributeError, IndexError) as e:
+                    self.logger.warning(f"Could not extract ID from key '{key}': {e}")
+                    consolidated_media_id = None # Ensure it's None on failure
+
             viewed_at_val = None
             if item.get('viewedAt'):
                 viewed_at_val = item.get('viewedAt')
