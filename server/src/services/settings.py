@@ -107,6 +107,7 @@ class SettingsService:
         from providers.plex import PlexProvider
         from providers.jellyfin import JellyfinProvider
         from providers.trakt import TraktProvider
+        from providers.langflow import LangflowProvider
         # Add other ProviderBase implementations here
 
         # Define lists of provider classes
@@ -116,7 +117,8 @@ class SettingsService:
             OllamaProvider,
             PlexProvider,
             JellyfinProvider,
-            TraktProvider
+            TraktProvider,
+            LangflowProvider,
         ]
 
         current_default_settings = SettingsService._BASE_DEFAULT_SETTINGS.copy()

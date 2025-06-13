@@ -23,6 +23,7 @@ from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
 from providers.gemini import GeminiProvider # Keep GeminiProvider import
+from providers.langflow import LangflowProvider # Import LangflowProvider
 from providers.trakt import TraktProvider # Import TraktProvider
 
 class Discovarr:
@@ -80,6 +81,13 @@ class Discovarr:
         self.ollama_base_url = None # Initialize Ollama setting
         self.ollama_model = None # Initialize Ollama setting
         self.ollama_temperature = None # 
+        self.langflow_enabled = None
+        self.langflow_base_url = None
+        self.langflow_api_key = None
+        self.langflow_flow_id = None
+        self.langflow_input_field = None
+        self.langflow_output_field = None
+        self.langflow_default_tweaks = None
         self.tmdb_api_key = None
         self.trakt_enabled = None
         self.trakt_enable_media = None # Trakt doesn't really have "media" in the same sense for exclusion, but history is key.
@@ -97,6 +105,7 @@ class Discovarr:
         self.sonarr = None
         self.gemini = None
         self.ollama = None
+        self.langflow = None
         self.trakt = None # Initialize Trakt service instance
         self.tmdb = None
 
@@ -156,6 +165,13 @@ class Discovarr:
         self.ollama_base_url = self.settings.get("ollama", "base_url")
         self.ollama_model = self.settings.get("ollama", "model")
         self.ollama_temperature = self.settings.get("ollama", "temperature")
+        self.langflow_enabled = self.settings.get("langflow", "enabled")
+        self.langflow_base_url = self.settings.get("langflow", "base_url")
+        self.langflow_api_key = self.settings.get("langflow", "api_key")
+        self.langflow_flow_id = self.settings.get("langflow", "flow_id")
+        self.langflow_input_field = self.settings.get("langflow", "input_field")
+        self.langflow_output_field = self.settings.get("langflow", "output_field")
+        self.langflow_default_tweaks = self.settings.get("langflow", "default_tweaks")
         self.trakt_enabled = self.settings.get("trakt", "enabled")
         self.trakt_enable_media = self.settings.get("trakt", "enable_media") # Though less relevant for Trakt media exclusion
         self.trakt_enable_history = self.settings.get("trakt", "enable_history")
@@ -176,6 +192,7 @@ class Discovarr:
         # (Re)Initialize services with the new configuration
         self.plex = None # Reset before potential re-init
         self.jellyfin = None # Reset before potential re-init
+        self.langflow = None # Reset before potential re-init
         self.trakt = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_api_key:
@@ -226,6 +243,21 @@ class Discovarr:
         else:
             self.logger.info("Ollama integration is disabled.")
 
+        if self.langflow_enabled and self.langflow_base_url and self.langflow_flow_id:
+            self.langflow = LangflowProvider(
+                base_url=self.langflow_base_url,
+                api_key=self.langflow_api_key,
+                flow_id=self.langflow_flow_id,
+                input_field=self.langflow_input_field,
+                output_field=self.langflow_output_field,
+                default_tweaks_str=self.langflow_default_tweaks
+            )
+            self.logger.info("Langflow service initialized.")
+        elif self.langflow_enabled:
+            self.logger.warning("Langflow is enabled but Base URL or Flow ID is missing. Langflow service not initialized.")
+        else:
+            self.logger.info("Langflow integration is disabled.")
+
         if self.trakt_enabled and self.trakt_client_id and self.trakt_client_secret:
             self.trakt = TraktProvider(
                 client_id=self.trakt_client_id,
@@ -271,6 +303,11 @@ class Discovarr:
         if self.ollama_enabled:
             if not self.ollama_base_url:
                 raise ValueError("Ollama Base URL is required when Ollama integration is enabled.")
+        
+        if self.langflow_enabled:
+            if not self.langflow_base_url or not self.langflow_flow_id:
+                raise ValueError("Langflow Base URL and Flow ID are required when Langflow integration is enabled.")
+
         
         if self.trakt_enabled:
             if not self.trakt_client_id:
@@ -460,8 +497,20 @@ class Discovarr:
                 system_prompt=self.system_prompt, 
                 temperature=self.ollama_temperature
             )
+        elif self.langflow:
+            if not self.langflow_flow_id: # Should be caught by _validate_configuration
+                self.logger.error("Langflow Flow ID is not configured.")
+                return {'success': False, 'message': "Langflow Flow ID is not configured.", 'status_code': 500}
+            model_provider_name = "Langflow"
+            model_to_log = self.langflow_flow_id # The "model" for Langflow is its flow_id
+            provider_result = await self.langflow.get_similar_media(
+                model=self.langflow_flow_id, # Pass flow_id as model
+                prompt=prompt,
+                system_prompt=self.system_prompt, # Langflow provider might use this in tweaks
+                temperature=None # Langflow provider might use this in tweaks, or it's part of default_tweaks
+            )
         else:
-            self.logger.warning("No LLM provider (Gemini or Ollama) is enabled or configured.")
+            self.logger.warning("No LLM provider (Gemini, Ollama, or Langflow) is enabled or configured.")
             return {'success': False, 'message': "No LLM provider is configured.", 'status_code': 503}
 
         if not provider_result: # Should ideally not happen if providers return error dicts
@@ -664,6 +713,24 @@ class Discovarr:
             return await self.ollama.get_models()
         except Exception as e:
             self.logger.error(f"Error retrieving Ollama models from Discovarr: {e}", exc_info=True)
+            return None
+        
+    async def langflow_get_models(self) -> Optional[List[str]]:
+        """
+        Retrieves the list of "models" (configured Flow ID) for Langflow.
+
+        Returns:
+            Optional[List[str]]: A list containing the configured Flow ID or None.
+        """
+        if not self.langflow:
+            self.logger.warning("Langflow service is not configured. Cannot retrieve models.")
+            return None
+        try:
+            self.logger.info("Fetching available Langflow 'models' (Flow ID).")
+            # LangflowProvider.get_models() returns a list with the configured flow_id
+            return await self.langflow.get_models()
+        except Exception as e:
+            self.logger.error(f"Error retrieving Langflow models from Discovarr: {e}", exc_info=True)
             return None
 
 

@@ -93,6 +93,11 @@ LOGGING_CONFIG = {
             'level': loglevel,
             'propagate': False
         },
+        'langflow': {
+            'handlers': ['default'],
+            'level': loglevel,
+            'propagate': False
+        },
         'fastapi': {
             'handlers': ['default'],
             'level': loglevel,
@@ -487,6 +492,20 @@ async def get_ollama_models(
     models = await discovarr.ollama_get_models() 
     if models is None:
         raise HTTPException(status_code=503, detail="Ollama service unavailable or error fetching models.")
+    return models
+
+@api_app.get("/langflow/models")
+async def get_langflow_models(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to retrieve available Langflow "models" (configured Flow ID).
+    """
+    logger.info("Received request to list Langflow models.")
+    models = await discovarr.langflow_get_models()
+    if models is None:
+        # This could happen if Langflow is not configured or if there's an API error
+        raise HTTPException(status_code=503, detail="Langflow service unavailable or error fetching models.")
     return models
 
 @api_app.post("/request/{tmdb_id}")
