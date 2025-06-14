@@ -557,7 +557,7 @@ const handleSelectExamplePrompt = (prompt) => {
                       <Edit :size="14" />
                     </button>
                   </div>
-                <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Library items from all Library Providers to exclude from suggestions.">media_exclude=auto</span>
+                <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Library items from all Library Providers to exclude from suggestions.">all_media=auto</span>
                 <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Favorites from all Library Providers.">favorites=auto</span>
                 <span class="bg-gray-700 text-gray-200 px-2 py-1 rounded-md font-mono" title="Watch History from all Library Providers.">watch_history=auto</span>
                 </div>

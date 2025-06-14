@@ -100,7 +100,7 @@ The original intent was to write a script to generate a prompt that gave me reco
 
 ## Search
 - Custom searches can be created and run ad-hoc, results are displayed and can be automatically saved with the `app.auto_media_save` setting. Saved searches are saved to the `media` table automatically. 
-- Searches support various template variables like `{{media_name}}` `{{limit}}` `{{media_exclude}}` `{{favorites}}` that will be auto-populated at runtime. `{{media_name}}` is used to populate the Source column linking recommendations to the source title. Use the Preview button to preview the generated prompt before submitting. 
+- Searches support various template variables like `{{media_name}}` `{{limit}}` `{{all_media}}` `{{favorites}}` that will be auto-populated at runtime. `{{media_name}}` is used to populate the Source column linking recommendations to the source title. Use the Preview button to preview the generated prompt before submitting. 
 - The Search button next to items in Watch History or Home will navigate to the Search page and auto-populate the `{{media_name}}` variable accordingly.
 
 ## Possible Roadmap

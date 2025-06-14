@@ -11,7 +11,7 @@ def test_get_prompt_basic_scenario(mocked_discovarr_instance: Discovarr):
     
     # --- Configure mocks for this specific test ---
     # Settings:
-    default_prompt_template = 'Test Prompt: Media={{ media_name }}, Limit={{ limit }}, Excludes={{ media_exclude }}, Favs={{ favorites }}, History={{ watch_history }}'
+    default_prompt_template = 'Test Prompt: Media={{ media_name }}, Limit={{ limit }}, Excludes={{ all_media }}, Favs={{ favorites }}, History={{ watch_history }}'
     test_specific_settings = {
         ("app", "default_prompt"): default_prompt_template,
         ("plex", "enabled"): True,
@@ -123,7 +123,7 @@ def test_get_prompt_custom_template_string(mocked_discovarr_instance: Discovarr)
     dv.db.get_ignored_media_titles.return_value = ["Ignored X"] # Set ignored media for the assertion
     dv.db.get_watch_history.return_value = [{"title": "Watched Y"}]
 
-    custom_template = "Custom: {{ media_name }} | Exclude: {{ media_exclude }} | Favs: {{ favorites }} | History: {{ watch_history }}"
+    custom_template = "Custom: {{ media_name }} | Exclude: {{ all_media }} | Favs: {{ favorites }} | History: {{ watch_history }}"
     prompt = dv.get_prompt(limit=10, media_name="Custom Media", template_string=custom_template)
 
     assert "Custom: Custom Media" in prompt

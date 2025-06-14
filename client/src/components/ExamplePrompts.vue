@@ -43,12 +43,12 @@ const emit = defineEmits(['close', 'select-prompt']);
 
 const examplePrompts = ref([
   { title: 'Simple Movie Recommendation', text: 'Suggest 3 movies similar to The Matrix.' },
-  { title: 'Simple Exclude Watched Items', text: 'Suggest Recommend comedy movies I haven\'t seen, excluding {{media_exclude}}.' },
-  { title: 'Recent TV Shows by Genre', text: 'Recommend {{limit}} science fiction TV shows from the last 5 years. \n\nExclude the following media from your recommendations: {{media_exclude}}.' },
-  { title: 'Recent TV Shows by Platform', text: 'Recommend {{limit}} TV shows from the last 5 years on Netflix. \n\nExclude the following media from your recommendations: {{media_exclude}}.' },
-  { title: 'Movies with Specific Actors', text: 'Recommend {{limit}} movies starring Tom Hanks and Meg Ryan. \n\nExclude the following media from your recommendations: {{media_exclude}}.' },
-  { title: 'Based on Favorites', text: 'Recommend {{limit}} movies based on my favorites: {{favorites}}. \n\nExclude the following media from your recommendations: {{media_exclude}}.' },
-  { title: 'Based on Watch History', text: 'Suggest {{limit}} movies or TV shows based on my watch history: {{watch_history}}. \n\nUse this list to determine what I should watch next: {{media_exclude}}.' },
+  { title: 'Simple Exclude Watched Items', text: 'Suggest Recommend comedy movies I haven\'t seen, excluding {{all_media}}.' },
+  { title: 'Recent TV Shows by Genre', text: 'Recommend {{limit}} science fiction TV shows from the last 5 years. \n\nExclude the following media from your recommendations: {{all_media}}.' },
+  { title: 'Recent TV Shows by Platform', text: 'Recommend {{limit}} TV shows from the last 5 years on Netflix. \n\nExclude the following media from your recommendations: {{all_media}}.' },
+  { title: 'Movies with Specific Actors', text: 'Recommend {{limit}} movies starring Tom Hanks and Meg Ryan. \n\nExclude the following media from your recommendations: {{all_media}}.' },
+  { title: 'Based on Favorites', text: 'Recommend {{limit}} movies based on my favorites: {{favorites}}. \n\nExclude the following media from your recommendations: {{all_media}}.' },
+  { title: 'Based on Watch History', text: 'Suggest {{limit}} movies or TV shows based on my watch history: {{watch_history}}. \n\nUse this list to determine what I should watch next: {{all_media}}.' },
 ]);
 
 const selectPrompt = (prompt) => {

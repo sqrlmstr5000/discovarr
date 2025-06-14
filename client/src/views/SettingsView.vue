@@ -656,7 +656,7 @@ onMounted(async () => { // Make onMounted async
                     <div class="mt-2 mb-4">Supported template variables: 
                       <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">limit</span>
                       <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_name</span>
-                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">media_exclude</span>
+                      <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">all_media</span>
                       <span class="bg-gray-700 text-gray-200 px-2.5 py-1 rounded-full mr-2 mb-2">watch_history</span>
                     </div>
                   </div>  

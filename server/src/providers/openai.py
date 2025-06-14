@@ -43,13 +43,13 @@ class OpenAi:
 
         self.client = OpenAI(api_key=self.openai_api_key)
 
-    def get_similar_media(self, media_name: str, media_exclude: str) -> Optional[Dict[str, Any]]:
+    def get_similar_media(self, media_name: str, all_media: str) -> Optional[Dict[str, Any]]:
         """
         Uses the OpenAI API to find media similar to the given media name.
 
         Args:
             media_name (str): The name of the movie or TV show
-            media_exclude (str): List of media to exclude from recommendations
+            all_media (str): List of media to exclude from recommendations
 
         Returns:
             dict: A dictionary containing the response from the OpenAI API, or None on error
@@ -84,7 +84,7 @@ class OpenAi:
 
             user_prompt = f"""Give me 5 tv series or movies similar to {media_name}. 
             Exclude the following media from your recommendations: 
-            {media_exclude}
+            {all_media}
 
             Double check to ensure the imdb_url page title contains the title of the media. 
             Correct the imdb_id if necessary.

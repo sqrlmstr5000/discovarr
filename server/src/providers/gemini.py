@@ -62,20 +62,45 @@ class GeminiProvider(LLMProviderBase):
             return {'success': False, 'message': "Gemini API Key is not configured.", 'status_code': 500}
         
         thinking_budget = kwargs.get('thinking_budget', 0.0)
+        tb_float = None
 
         try:
             self.logger.debug(f"Using prompt: {prompt}")
 
-            response = await self.client.aio.models.generate_content(model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
-                    system_instruction=system_prompt,
-                    temperature=temperature,
-                    response_mime_type="application/json",
-                    response_schema=SuggestionList
-                ))
+            # Conditionally add thinking_config
+            thinking_budget_value = kwargs.get('thinking_budget') # Can be None
             
+            # Models that support thinking_budget
+            # Forced to use an if-else structure here due to the following error: pydantic_core._pydantic_core.ValidationError: Extra inputs are not permitted
+            if model.startswith("gemini-2.5-flash") or \
+               model.startswith("gemini-2.5-pro"):
+                if thinking_budget_value is not None:
+                    try:
+                        tb_float = float(thinking_budget_value)
+                        self.logger.debug(f"Applying thinking_budget {tb_float} for model {model}.")
+                    except ValueError:
+                        self.logger.warning(f"Invalid thinking_budget value '{thinking_budget_value}' for model {model}. Disabling thinking_config.")
+                elif thinking_budget_value is not None:
+                    self.logger.info(f"Model {model} does not support thinking_budget. Ignoring parameter.")
+                response = await self.client.aio.models.generate_content(model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                        system_instruction=system_prompt,
+                        temperature=temperature,
+                        response_mime_type="application/json",
+                        response_schema=SuggestionList
+                    ))
+            else:
+                response = await self.client.aio.models.generate_content(model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=temperature,
+                        response_mime_type="application/json",
+                        response_schema=SuggestionList
+                    ))
+                       
             gemini_response = json.loads(response.text)
             
             # Extract token counts from usage metadata

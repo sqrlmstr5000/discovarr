@@ -409,7 +409,7 @@ class Discovarr:
 
             template = Template(template_string)
             rendered_prompt = template.render(
-                limit=limit, media_name=media_name, media_exclude=all_ignored_str, favorites=favorites_str, watch_history=watch_history_str
+                limit=limit, media_name=media_name, media_exclude=all_ignored_str, all_media=all_ignored_str, favorites=favorites_str, watch_history=watch_history_str
             )
             return rendered_prompt
         except Exception as e:

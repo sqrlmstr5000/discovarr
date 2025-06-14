@@ -274,6 +274,7 @@ class PlexProvider(LibraryProviderBase):
                     consolidated_media_id = str(key.split('/')[-1])
                 except (AttributeError, IndexError) as e:
                     self.logger.warning(f"Could not extract ID from key '{key}': {e}")
+                    self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
                     consolidated_media_id = None # Ensure it's None on failure
 
             viewed_at_val = None
@@ -396,7 +397,7 @@ class PlexProvider(LibraryProviderBase):
             "url": {"value": "http://plex:32400", "type": SettingType.URL, "description": "Plex server URL", "required": True}, # Already marked
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Plex X-Plex-Token", "required": True}, # Already marked
             "default_user": {"value": None, "type": SettingType.STRING, "description": "Plex Default User to use for watch history and favorites, if None use all."},
-            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{media_exclude}} template variable."},
+            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{all_media}} template variable."},
             "enable_history": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable watch history from this library provider. Used for the {{watch_history}} template variable."},
             "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

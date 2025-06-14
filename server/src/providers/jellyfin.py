@@ -360,7 +360,7 @@ class JellyfinProvider(LibraryProviderBase):
             "url": {"value": "http://jellyfin:8096", "type": SettingType.URL, "description": "Jellyfin server URL", "required": True},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyfin API key", "required": True},
             "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyfin Default User to use for watch history and favorites, if None use all."},
-            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{media_exclude}} template variable."},
+            "enable_media": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable media from this library provider. All library media will be included the {{all_media}} template variable."},
             "enable_history": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable watch history from this library provider. Used for the {{watch_history}} template variable."},
             "base_provider": {"value": "library", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

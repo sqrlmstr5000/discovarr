@@ -16,7 +16,7 @@ class SettingsService:
     """
     
     # Default settings by group with types and validation
-    _DEFAULT_PROMPT_TEMPLATE = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{media_exclude}}"
+    _DEFAULT_PROMPT_TEMPLATE = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{all_media}}"
     _BASE_DEFAULT_SETTINGS = {
         "app": {
             "default_prompt": {"value": _DEFAULT_PROMPT_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
