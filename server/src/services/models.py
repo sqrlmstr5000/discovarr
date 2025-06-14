@@ -142,3 +142,13 @@ class Suggestion(BaseModel):
 
 class SuggestionList(BaseModel):
     suggestions: List[Suggestion]
+
+# Pydantic models for Watch History API
+class WatchHistoryCreateRequest(BaseModel):
+    title: str
+    media_id: Optional[str] = None
+    media_type: str  # 'movie' or 'tv'
+    watched_by: str
+    last_played_date: Optional[str] = None # ISO 8601 string
+    source: Optional[str] = None
+    poster_url_source: Optional[str] = None # Original URL of the poster

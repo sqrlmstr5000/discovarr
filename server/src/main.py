@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from discovarr import Discovarr
 from pydantic import BaseModel
 import json
-import logging
+import logging # Keep logging import
 from datetime import datetime # Import datetime
 import logging.config
 import sys
@@ -15,6 +15,7 @@ import os
 import uvicorn
 import asyncio
 
+from services.models import WatchHistoryCreateRequest # Import new Pydantic models
 # This is your original application, now specifically for API routes
 api_app = FastAPI(
     title="Discovarr API",
@@ -706,6 +707,30 @@ async def delete_all_watch_history_endpoint(
         logger.error(f"Unexpected error deleting all watch history items: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while deleting all watch history items.")
     
+@api_app.post("/watch-history/import", status_code=201) # 201 Created for successful POST
+async def create_watch_history_item_endpoint(
+    request_data: WatchHistoryCreateRequest,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Manually add or update a watch history item.
+    This endpoint performs an upsert based on title and watched_by.
+    """
+    logger.info(f"Received request to create/update watch history item: {request_data.title}")
+    try:
+        result = await discovarr.add_watch_history_item_manual(request_data.model_dump())
+        if not result.get("success"):
+            status_code = result.get("status_code", 500)
+            raise HTTPException(status_code=status_code, detail=result.get("message"))
+        # For a true POST that creates, you might return the created object.
+        # Since this is an upsert, a success message is fine.
+        return result
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error creating/updating watch history item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
 @api_app.delete("/watch-history/{history_item_id}")
 async def delete_watch_history_item_endpoint(
     history_item_id: int,

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from jinja2 import Template # Import Jinja2 Template
 from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Union
-import asyncio # For creating tasks
+import asyncio 
 import aiohttp # For async HTTP requests in the caching task
 from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
 from services.radarr import Radarr # Keep Radarr import
@@ -18,7 +18,7 @@ from services.database import Database
 from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
-from services.image_cache import ImageCacheService # Import the new service
+from services.image_cache import ImageCacheService 
 from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
@@ -692,7 +692,6 @@ class Discovarr:
             self.logger.error(f"Exception in image caching task for {provider_name} item {item_id} (URL: {image_url}): {e}", exc_info=True)
         return original_url # Fallback to original URL on error
 
-
     async def _sync_watch_history_to_db(self, user_name: str, user_id: str, recently_watched_items: Optional[List[ItemsFiltered]], source: str) -> Optional[List[ItemsFiltered]]:
         """
         Helper method to filter and add/update watch history items in the database.
@@ -719,7 +718,7 @@ class Discovarr:
                 
                 url_to_cache = item.poster_url
 
-                # If poster_url is None, try to fetch it from TMDB
+                # If poster_url is None, try to fetch it from TMDB. Used for Trakt, Jellyfin and Plex provide the poster_url directly.
                 if not url_to_cache and item.id and item.type and self.tmdb:
                     self.logger.info(f"Poster URL is missing for {source} item '{item.name}' (ID: {item.id}). Attempting TMDB lookup.")
                     tmdb_details = self.tmdb.get_media_detail(tmdb_id=item.id, media_type=item.type)
@@ -1246,6 +1245,81 @@ class Discovarr:
         except Exception as e:
             self.logger.error(f"Error in Discovarr getting unique media values for column '{col_name}': {e}", exc_info=True)
             return []
+        
+    async def add_watch_history_item_manual(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Manually adds or updates a watch history item.
+        This method is intended to be called by an API endpoint.
+        `data` is expected to be a dictionary matching WatchHistoryCreateRequest.
+        """
+        self.logger.info(f"Attempting to add/update watch history item manually: {data.get('title')}")
+        try:
+            # Get initial values from input data that might be updated
+            title = data.get('title')
+            media_type = data.get('media_type')
+            last_played_date_str = data.get('last_played_date')
+
+            # Validate last_played_date if provided
+            if last_played_date_str:
+                try:
+                    # Attempt to parse to ensure it's a valid ISO 8601 string
+                    datetime.fromisoformat(last_played_date_str.replace('Z', '+00:00'))
+                except ValueError:
+                    self.logger.error(f"Invalid last_played_date format: {last_played_date_str}. Must be ISO 8601.")
+                    return {"success": False, "message": f"Invalid last_played_date format: '{last_played_date_str}'. Must be a valid ISO 8601 string (e.g., '2023-10-26T10:00:00Z' or '2023-10-26T10:00:00+00:00').", "status_code": 400}
+            else: # If not provided, it will be defaulted to now() in db.add_watch_history
+                self.logger.info(f"last_played_date not provided for '{title}', will default to current time upon DB insertion.")
+
+            if media_type not in ['tv', 'movie']:
+                self.logger.error(f"Invalid media_type '{media_type}' provided. Must be 'tv' or 'movie'.")
+                return {"success": False, "message": f"Invalid media_type '{media_type}'. Must be 'tv' or 'movie'.", "status_code": 400}
+            
+            # These will be used for db.add_watch_history and might be updated by lookup
+            current_media_id = data.get('media_id')
+            current_poster_url_source = data.get('poster_url_source')
+
+            # If media_id is not set, try to look it up using title and media_type
+            if not current_media_id and title and media_type and self.tmdb:
+                self.logger.info(f"Media ID not provided for '{title}'. Attempting TMDB lookup by title.")
+                tmdb_lookup_result = self.tmdb.lookup_media(query=title, media_type=media_type)
+                if tmdb_lookup_result and tmdb_lookup_result.get("id"):
+                    current_media_id = str(tmdb_lookup_result.get("id")) # Ensure media_id is a string
+                    self.logger.info(f"Found TMDB ID '{current_media_id}' for '{title}'.")
+                    # If poster_url_source was also missing (or not provided initially), try to get it from this lookup
+                    if not current_poster_url_source and tmdb_lookup_result.get("poster_path"):
+                        poster_path = tmdb_lookup_result.get("poster_path")
+                        current_poster_url_source = f"https://image.tmdb.org/t/p/w500{poster_path}"
+                        self.logger.info(f"Found poster URL from TMDB for '{title}': {current_poster_url_source}")
+                else:
+                    self.logger.warning(f"TMDB lookup by title failed for '{title}' or no ID/poster found.")
+            
+            # Image Caching
+            final_poster_url = None
+            source_provider = data.get('source', 'manual') # Default source to 'manual' if not provided
+            # Use the (potentially updated) current_media_id for caching. Fallback to title if current_media_id is still None.
+            media_id_for_cache = current_media_id or title
+
+            if current_poster_url_source and media_id_for_cache:
+                final_poster_url = await self._cache_image_if_needed(current_poster_url_source, source_provider, media_id_for_cache)
+
+            success = self.db.add_watch_history(
+                title=data['title'],
+                media_id=current_media_id, # Use potentially updated media_id
+                media_type=data['media_type'],
+                watched_by=data['watched_by'],
+                last_played_date=last_played_date_str, # Pass the validated or None string
+                source=source_provider,
+                poster_url=final_poster_url,
+                poster_url_source=current_poster_url_source # Use potentially updated poster_url_source
+            )
+
+            if success:
+                return {"success": True, "message": "Watch history item added/updated successfully."}
+            else:
+                return {"success": False, "message": "Failed to add/update watch history item in database.", "status_code": 500}
+        except Exception as e:
+            self.logger.error(f"Error manually adding/updating watch history item: {e}", exc_info=True)
+            return {"success": False, "message": str(e), "status_code": 500}
 
     def trigger_scheduled_job(self, job_id: str) -> Dict[str, Any]:
         """
