@@ -3,6 +3,7 @@ from peewee import *
 from datetime import datetime
 from typing import Optional, Dict, List, Any 
 from pydantic import BaseModel, Field
+from pgvector.peewee import VectorField
 
 # Peewee
 database = DatabaseProxy() # Use a Proxy to allow runtime DB selection
@@ -66,6 +67,13 @@ class Media(PeeweeBaseModel):
     original_language = CharField(null=True) # e.g., 'en', 'ja'
     ignore = BooleanField(default=False)
     search = ForeignKeyField(Search, backref='media', null=True)
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+
+class MediaDetail(PeeweeBaseModel):
+    media = ForeignKeyField(Media, backref='detail', unique=True, on_delete='CASCADE') # One-to-one relationship
+    research = TextField(null=False) # To store research notes or extended details
+    embedding = VectorField(dimensions=768) # Default for multi-qa-mpnet-base-cos-v1 https://www.sbert.net/docs/sentence_transformer/pretrained_models.html#semantic-search-models
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 

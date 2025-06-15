@@ -21,7 +21,9 @@ class Migration:
             return 0
 
     def set_version(self, version: int):
+        placeholder = self.database.param  # Gets '?' for SQLite, '%s' for Postgres
+        sql_query = f"INSERT INTO migrations (version, applied_at) VALUES ({placeholder}, {placeholder})"
         self.database.execute_sql(
-            "INSERT INTO migrations (version, applied_at) VALUES (?, ?)",
+            sql_query,
             (version, datetime.now())
         )

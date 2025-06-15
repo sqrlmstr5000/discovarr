@@ -6,9 +6,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
 from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
-from playhouse.migrate import SqliteMigrator, PostgresqlMigrator
+from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS, Media, WatchHistory, Search, SearchStat, Schedule, Settings
+from .models import database, MODELS as BASE_MODELS, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaDetail
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -120,10 +120,43 @@ class Database:
             self.logger.critical(f"Failed to connect to the configured database ({self.db_type}): {e}", exc_info=True)
             raise RuntimeError(f"Database connection failed: {e}") from e
 
+        # Prepare the list of models for table creation
+        default_models = list(BASE_MODELS) # Start with the base list of models from models.py
+
+        if self.db_type == "postgres":
+            try:
+                # Attempt to create the 'vector' extension if it doesn't exist.
+                # This also serves as a check for its availability.
+                database.execute_sql("CREATE EXTENSION IF NOT EXISTS vector;")
+                self.logger.info("Successfully ensured 'vector' extension is available in PostgreSQL.")
+                vector_extension_exists = True
+            except OperationalError as op_err:
+                # This can happen if the extension is not installed on the server,
+                # or if the user lacks permissions to create extensions.
+                self.logger.warning(f"Failed to create or confirm 'vector' extension in PostgreSQL: {op_err}. "
+                                   "The MediaDetail table (and vector features) will not be available. "
+                                   "Ensure the 'vector' extension is installed on your PostgreSQL server and the user has permissions.")
+                vector_extension_exists = False
+            except Exception as e:
+                self.logger.error(f"An unexpected error occurred while trying to enable the 'vector' extension: {e}. "
+                                  "MediaDetail table may not be configured as expected.")
+                vector_extension_exists = False
+
+            if vector_extension_exists:
+                self.logger.info("PostgreSQL 'vector' extension is active. MediaDetail table will be included.")
+                if vector_extension_exists:
+                    if MediaDetail not in default_models: # Add if not already part of BASE_MODELS
+                        default_models.append(MediaDetail)
+            else:
+                self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaDetail table will NOT be included.")
+                if MediaDetail in default_models: # Remove if it was in BASE_MODELS and extension is not active
+                    default_models.remove(MediaDetail)
+
         self.backup_service = BackupService(logger=self.logger, db_type=self.db_type, db_config=db_config_for_backup)
 
-        # Create tables
-        database.create_tables(MODELS, safe=True)
+        # Create tables using the determined list of models
+        self.logger.info(f"Final list of models for table creation: {[m.__name__ for m in default_models]}")
+        database.create_tables(default_models, safe=True)
         
         # Run migrations after creating tables
         self._run_migrations()
