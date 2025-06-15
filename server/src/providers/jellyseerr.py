@@ -82,17 +82,28 @@ class JellyseerrProvider(RequestProviderBase):
         tmdb_id = identifiers.get("tmdb_id")
         media_type = identifiers.get("media_type") # "movie" or "tv"
 
-        if title:
-            self.logger.info(f"Jellyseerr looking up media with title: {title}")
-            return self._make_request("GET", "search", params={"query": title})
-        elif tmdb_id and media_type:
+        if title and media_type:
             if media_type not in ["movie", "tv"]:
-                msg = "Invalid media_type for tmdb_id lookup. Must be 'movie' or 'tv'."
+                msg = "Invalid media_type. Must be 'movie' or 'tv'."
                 self.logger.error(msg)
                 return APIResponse(success=False, message=msg, status_code=400)
-            self.logger.info(f"Jellyseerr looking up {media_type} with TMDB ID: {tmdb_id}")
-            # Jellyseerr's /discover/{mediaType}/{tmdbId} endpoint can be used for this
-            return self._make_request("GET", f"search/{media_type}/{tmdb_id}")
+            self.logger.info(f"Jellyseerr searching for '{title}' with media_type: {media_type}")
+            search_response = self._make_request("GET", "search", params={"query": title})
+
+            if search_response.success and isinstance(search_response.data, dict):
+                results = search_response.data.get("results", [])
+                for item in results:
+                    if item.get("mediaType") == media_type:
+                        self.logger.info(f"Found matching {media_type} for '{title}': {item.get('title') or title}")
+                        # Return the first matching item
+                        return APIResponse(success=True, data=item, status_code=search_response.status_code)
+                
+                # If no item with matching mediaType was found
+                msg = f"No {media_type} found for '{title}' in Jellyseerr search results."
+                self.logger.info(msg)
+                return APIResponse(success=False, message=msg, status_code=404, data=[]) # Return empty list for data
+            elif not search_response.success:
+                return search_response # Propagate error from _make_request
         else:
             msg = "Either 'title' or both 'tmdb_id' and 'media_type' must be provided for lookup."
             self.logger.error(msg)
@@ -144,43 +155,43 @@ class JellyseerrProvider(RequestProviderBase):
             return APIResponse(success=False, message=msg, status_code=400, error={"details": msg})
         
         # Lookup the media by title, Jellyseerr /request requires the internal mediaId
-        lookup = self.lookup_media(title=title)
+        lookup = self.lookup_media(title=title, media_type=media_type)
         if lookup.success:
-            lookup_data = lookup.data.get("results", [])
-            self.logger.info(f"Jellyseerr lookup results: {json.dumps(lookup_data, indent=2)}")
+            lookup_data = lookup.data
             if lookup_data:
-                # Get the first result
-                lookup_item = lookup_data[0]
-                self.logger.debug(f"Using first lookup item: {json.dumps(lookup_item, indent=2)}")
-                media_id = lookup_item.get("id")  # Assuming 'id' is the TMDB ID in Jellyseerr's response
+                self.logger.debug(f"Using lookup data for request: {json.dumps(lookup_data, indent=2)}")
+                media_id = lookup_data.get("id")  # Assuming 'id' is the TMDB ID in Jellyseerr's response
 
-        payload: Dict[str, Any] = {
-            "mediaType": media_type,
-            "mediaId": media_id, # Jellyseerr uses mediaId for tmdb_id
-            "is4k": is_4k,
-        }
+            payload: Dict[str, Any] = {
+                "mediaType": media_type,
+                "mediaId": media_id, # Jellyseerr uses mediaId for tmdb_id
+                "is4k": is_4k,
+            }
 
-        if user_id is not None:
-            payload["userId"] = user_id 
+            if user_id is not None:
+                payload["userId"] = user_id 
 
-        if target_server_id is not None:
-            payload["serverId"] = target_server_id
-        if target_profile_id is not None:
-            payload["profileId"] = target_profile_id
-        if target_root_folder is not None:
-            payload["rootFolder"] = target_root_folder # Or "rootFolderPath" - check Jellyseerr API docs
+            if target_server_id is not None:
+                payload["serverId"] = target_server_id
+            if target_profile_id is not None:
+                payload["profileId"] = target_profile_id
+            if target_root_folder is not None:
+                payload["rootFolder"] = target_root_folder # Or "rootFolderPath" - check Jellyseerr API docs
 
-        self.logger.info(f"Jellyseerr request payload: {json.dumps(payload, indent=2)}")
-        # The endpoint for creating requests is typically just "/request"
-        api_response = self._make_request("POST", "request", data=payload)
+            self.logger.info(f"Jellyseerr request payload: {json.dumps(payload, indent=2)}")
+            # The endpoint for creating requests is typically just "/request"
+            api_response = self._make_request("POST", "request", data=payload)
 
-        if not api_response.success:
-            # The error details from _make_request are already in api_response.error
-            self.logger.error(f"Failed to request media via Jellyseerr {item_info}: {api_response.message} - {api_response.error.get('details') if api_response.error else 'No details'}")
+            if not api_response.success:
+                # The error details from _make_request are already in api_response.error
+                self.logger.error(f"Failed to request media via Jellyseerr {item_info}: {api_response.message} - {api_response.error.get('details') if api_response.error else 'No details'}", exc_info=True)
+                return api_response
+
+            self.logger.info(f"Jellyseerr request successful for {item_info}. Response: {api_response.data}")
             return api_response
-
-        self.logger.info(f"Jellyseerr request successful for {item_info}. Response: {api_response.data}")
-        return api_response
+        else:
+            self.logger.error(f"Failed to lookup media via Jellyseerr {item_info}: {lookup.message} - {lookup.error.get('details') if lookup.error else 'No details'}", exc_info=True)
+            return None
     
     @classmethod
     def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
