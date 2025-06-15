@@ -11,3 +11,4 @@ ollama
 trakt.py
 aiohttp 
 aiofiles
+psycopg2-binary

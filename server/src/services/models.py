@@ -5,8 +5,7 @@ from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field
 
 # Peewee
-
-database = SqliteDatabase(None)  # Will be initialized with path later
+database = DatabaseProxy() # Use a Proxy to allow runtime DB selection
 
 class SettingType(str, enum.Enum):
     STRING = "STRING"

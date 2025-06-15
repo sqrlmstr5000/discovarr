@@ -75,7 +75,10 @@ RUN mkdir -p /config /backups /cache && \
     chown -R ${PUID_BUILD}:${PGID_BUILD} /config /backups /app /cache
 
 # Install gosu for dropping privileges
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
 
 # Set default PUID/PGID environment variables if not provided at runtime
 # These are used by the entrypoint.sh script.

@@ -1,13 +1,13 @@
 import logging
-from playhouse.migrate import SqliteMigrator
-from peewee import SqliteDatabase
+from playhouse.migrate import SchemaMigrator # Generic migrator type
+from peewee import Database as PeeweeDatabase # Generic Peewee Database type
 from datetime import datetime
 
 class Migration:
-    def __init__(self, database: SqliteDatabase):
+    def __init__(self, database: PeeweeDatabase, migrator: SchemaMigrator):
         self.logger = logging.getLogger(__name__)
         self.database = database
-        self.migrator = SqliteMigrator(database)
+        self.migrator = migrator # Use the passed migrator instance
         
     def get_current_version(self) -> int:
         try:

@@ -1,11 +1,12 @@
 import importlib
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
-from peewee import fn, SqliteDatabase, JOIN
-from playhouse.migrate import SqliteMigrator
+from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
+from playhouse.migrate import SqliteMigrator, PostgresqlMigrator
 from playhouse.shortcuts import model_to_dict
 from .models import database, MODELS, Media, WatchHistory, Search, SearchStat, Schedule, Settings
 from .backup import BackupService
@@ -26,19 +27,103 @@ class Database:
         """
         self.logger = logging.getLogger(__name__)
         self.db_path = db_path
-        self.backup_service = BackupService(logger=self.logger)
+
+        self.db_type = os.environ.get("DISCOVARR_DATABASE", "sqlite").lower()
+        self.logger.info(f"DISCOVARR_DATABASE environment variable set to: '{self.db_type}'")
+
+        current_db_instance = None
+        db_config_for_backup = {'db_path': self.db_path if self.db_type == "sqlite" else None}
+
+        if self.db_type == "postgres":
+            pg_host = os.environ.get("POSTGRES_HOST")
+            pg_port_str = os.environ.get("POSTGRES_PORT", "5432")
+            pg_user = os.environ.get("POSTGRES_USER")
+            pg_password = os.environ.get("POSTGRES_PASSWORD")
+            pg_dbname = os.environ.get("POSTGRES_DBNAME", "discovarr")
+
+            db_config_for_backup.update({
+                'host': pg_host,
+                'port': pg_port_str,
+                'user': pg_user,
+                'password': pg_password, # BackupService should handle password securely
+                'dbname': pg_dbname,
+            })
+
+            missing_pg_vars = []
+            if not pg_host: missing_pg_vars.append("POSTGRES_HOST")
+            if not pg_user: missing_pg_vars.append("POSTGRES_USER")
+            if not pg_password: missing_pg_vars.append("POSTGRES_PASSWORD")
+            if not pg_dbname: missing_pg_vars.append("POSTGRES_DBNAME")
+
+            if missing_pg_vars:
+                self.logger.error(f"PostgreSQL selected, but required environment variables are missing: {', '.join(missing_pg_vars)}. Falling back to SQLite.")
+                self.db_type = "sqlite"
+            else:
+                try:
+                    pg_port = int(pg_port_str)
+                    current_db_instance = PostgresqlDatabase(
+                        pg_dbname,
+                        user=pg_user,
+                        password=pg_password,
+                        host=pg_host,
+                        port=pg_port
+                    )
+                    try:
+                        # Test connection early
+                        current_db_instance.connect()
+                        self.logger.info(f"Successfully connected to PostgreSQL database: {pg_dbname} on {pg_host}:{pg_port}")
+                        # We don't close here; Proxy will manage the initialized connection.
+                    except OperationalError as e:
+                        if f'database "{pg_dbname}" does not exist' in str(e).lower():
+                            self.logger.warning(f"Database '{pg_dbname}' does not exist. Attempting to create it.")
+                            try:
+                                # Connect to the default 'postgres' database to create the new one
+                                maintenance_db = PostgresqlDatabase(
+                                    "postgres", user=pg_user, password=pg_password, host=pg_host, port=pg_port
+                                )
+                                maintenance_db.connect()
+                                maintenance_db.execute_sql(f"CREATE DATABASE \"{pg_dbname}\"") # Use quotes for dbname
+                                maintenance_db.close()
+                                self.logger.info(f"Database '{pg_dbname}' created successfully. Re-testing connection.")
+                                current_db_instance.connect() # Re-test connection to the newly created DB
+                                self.logger.info(f"Successfully connected to newly created PostgreSQL database: {pg_dbname}")
+                            except Exception as create_db_e:
+                                self.logger.error(f"Failed to create PostgreSQL database '{pg_dbname}': {create_db_e}. Falling back to SQLite.")
+                                self.db_type = "sqlite"
+                                current_db_instance = None # Ensure it's reset
+                        else: # Other OperationalError
+                            raise e # Re-raise if it's not a "database does not exist" error
+                except ValueError:
+                    self.logger.error(f"Invalid POSTGRES_PORT: '{pg_port_str}'. Must be an integer. Falling back to SQLite.")
+                    self.db_type = "sqlite"
+                    current_db_instance = None # Ensure it's reset
+                except Exception as e:
+                    self.logger.error(f"Failed to connect to PostgreSQL: {e}. Falling back to SQLite.")
+                    self.db_type = "sqlite"
+                    current_db_instance = None # Ensure it's reset
         
-        # Initialize the database
-        database.init(db_path, pragmas={
-            "journal_mode": "wal",
-            "temp_store":2,
-            "synchronous": 1,
-            "cache_size": 64000,
-        })
-        database.connect()
-        
+        if self.db_type == "sqlite" or current_db_instance is None:
+            self.db_type = "sqlite" # Ensure it's correctly set after any fallback
+            db_config_for_backup['db_path'] = self.db_path # Ensure db_path is set for SQLite backup
+            current_db_instance = SqliteDatabase(db_path, pragmas={
+                "journal_mode": "wal",
+                "temp_store": 2,
+                "synchronous": 1,
+                "cache_size": 64000,
+            })
+            self.logger.info(f"Initialized SQLite database at {db_path}")
+
+        database.initialize(current_db_instance)
+        try:
+            database.connect(reuse_if_open=True)
+        except Exception as e:
+            self.logger.critical(f"Failed to connect to the configured database ({self.db_type}): {e}", exc_info=True)
+            raise RuntimeError(f"Database connection failed: {e}") from e
+
+        self.backup_service = BackupService(logger=self.logger, db_type=self.db_type, db_config=db_config_for_backup)
+
         # Create tables
-        database.create_tables(MODELS)
+        database.create_tables(MODELS, safe=True)
         
         # Run migrations after creating tables
         self._run_migrations()
@@ -49,11 +134,16 @@ class Database:
     def _run_migrations(self):
         """Run all pending database migrations"""
         try:
-            migration = Migration(database)
-            
+            if self.db_type == "postgres":
+                migrator_instance = PostgresqlMigrator(database)
+            else: # Default to SQLite
+                migrator_instance = SqliteMigrator(database)
+            migration = Migration(database, migrator_instance)
+
             # Get all migration files
             migrations_dir = Path(__file__).parent / 'migrations'
-            self.logger.info(f"Migrations Dir: {migrations_dir}")
+            self.logger.debug(f"Migrations Dir: {migrations_dir}")
+
             migration_files = sorted([
                 f for f in migrations_dir.glob('[0-9]*.py')
                 if f.stem != '__init__'
@@ -129,7 +219,8 @@ class Database:
                 # Execute migration in a transaction
                 with database.atomic():
                     try:
-                        database.execute_sql('PRAGMA foreign_keys=OFF;')
+                        if self.db_type == "sqlite": # PRAGMA is SQLite specific
+                            database.execute_sql('PRAGMA foreign_keys=OFF;')
                         self.logger.debug(f"Starting migration {current_file_version}")
                         module.upgrade(migration.migrator)
                         self.logger.debug(f"Migration {current_file_version} code executed successfully")
@@ -137,18 +228,20 @@ class Database:
                         # Update the version in migrations table
                         migration.set_version(current_file_version)
                         self.logger.debug(f"Migration {current_file_version} version recorded")
-                        database.execute_sql('PRAGMA foreign_keys=ON;')
+                        if self.db_type == "sqlite":
+                            database.execute_sql('PRAGMA foreign_keys=ON;')
 
                         self.logger.info(f"Successfully applied migration {current_file_version}")
                     except Exception as e:
                         self.logger.error(f"Failed to apply migration {current_file_version}: {e}")
-                        database.execute_sql('PRAGMA foreign_keys=ON;')
+                        if self.db_type == "sqlite":
+                            database.execute_sql('PRAGMA foreign_keys=ON;')
                         raise
 
             self.logger.info("Database migrations complete")
 
         except Exception as e:
-            self.logger.error(f"Error running migrations: {e}")
+            self.logger.error(f"Error running migrations: {e}", exc_info=True)
             raise
 
     def _add_default_tasks(self):

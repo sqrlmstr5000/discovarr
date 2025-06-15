@@ -10,7 +10,7 @@ ENV PYTHONTRACEMALLOC=1
 # Install Node.js (e.g., v18) and npm
 RUN apt-get update && \
     apt-get install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -21,6 +21,9 @@ WORKDIR /app
 COPY ./server/src/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
+
+# Install PostgreSQL client for pg_dump/psql
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # Copy server application code (will be volume-mounted in dev)
 COPY ./server /app/server

@@ -41,7 +41,6 @@ class SettingsService:
         "tmdb": {
             "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API key", "required": True},
         },
-        
     }
     # DEFAULT_SETTINGS will be populated by _build_default_settings_if_needed
     # This ensures LLM provider defaults are loaded dynamically.
