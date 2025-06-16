@@ -8,6 +8,7 @@ import HomeOutline from 'vue-material-design-icons/HomeOutline.vue';
 import HistoryIcon from 'vue-material-design-icons/History.vue';
 import MovieOutline from 'vue-material-design-icons/MovieOutline.vue';
 import MenuIcon from 'vue-material-design-icons/Menu.vue'; // For hamburger
+import Brain from 'vue-material-design-icons/Brain.vue';
 import Cog from 'vue-material-design-icons/Cog.vue';
 
 import { useMovieStore } from './stores/movie';
@@ -121,6 +122,14 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Icon Links -->
+         <div
+          class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'home' && (!isMobile || isMobileNavOpen) }"
+          title="Home"
+          @click="() => { router.push('/'); if (isMobile) toggleMobileNav(); }"
+        >
+          <HomeOutline fillColor="#FFFFFF" :size="28" />
+        </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
           :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'search' && (!isMobile || isMobileNavOpen) }"
@@ -131,11 +140,11 @@ onBeforeUnmount(() => {
         </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"
-          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'home' && (!isMobile || isMobileNavOpen) }"
-          title="Home"
-          @click="() => { router.push('/'); if (isMobile) toggleMobileNav(); }"
+          :class="{ 'bg-gray-700 border-r-4 border-discovarr': $route.name === 'research' && (!isMobile || isMobileNavOpen) }"
+          title="Researcharr"
+          @click="() => { router.push('/research'); if (isMobile) toggleMobileNav(); }"
         >
-          <HomeOutline fillColor="#FFFFFF" :size="28" />
+          <Brain fillColor="#FFFFFF" :size="28" />
         </div>
         <div
           class="w-full flex justify-center items-center h-[52px] cursor-pointer hover:bg-gray-800/70 transition-colors duration-150 ease-in-out relative"

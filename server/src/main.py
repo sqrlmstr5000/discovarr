@@ -202,6 +202,21 @@ class PromptPreviewRequest(BaseModel):
     media_name: Optional[str] = None
     prompt: Optional[str] = None
 
+class ResearchPromptPreviewRequest(BaseModel):
+    media_name: Optional[str] = None
+    prompt: Optional[str] = None # This will be the template_string
+
+class ResearchRequest(BaseModel):
+    media_name: str
+    media_id: int
+    prompt: Optional[str] = None # This will be the template_string
+
+class MediaSearchResultItem(BaseModel):
+    title: Optional[str] = None
+    media_id: Optional[str] = None # Corresponds to tmdb_id
+    media_type: Optional[str] = None
+
+
 # Store single instance
 _discovarr_instance = None
 
@@ -460,6 +475,61 @@ async def gemini_similar_media_with_prompt(
         logger.error(f"Error processing custom prompt: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_app.post("/research")
+async def research_media_endpoint(
+    request: ResearchRequest,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to generate research for a given media item.
+    """
+    logger.info(f"Received research request for media: '{request.media_name}' (ID: {request.media_id})")
+    try:
+        result = await discovarr.get_research(media_name=request.media_name, media_id=request.media_id)
+        
+        if not result.get("success"):
+            status_code = result.get("status_code", 500) # Default to 500 if not specified
+            message = result.get("message", "Unknown error during research generation.")
+            logger.error(f"Error generating research for '{request.media_name}': {message} (Status: {status_code})")
+            raise HTTPException(status_code=status_code, detail=message)
+        
+        logger.info(f"Successfully generated research for '{request.media_name}'.")
+        return result # Contains success, message, research_id, research_text
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error processing research request for '{request.media_name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+    
+@api_app.post("/research/prompt/preview")
+async def preview_research_prompt_endpoint(
+    request: ResearchPromptPreviewRequest,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Previews a rendered research prompt based on the provided template and media name.
+    """
+    logger.info(f"Generating research prompt preview with data: {request.model_dump_json(indent=2)}")
+    try:
+        # The get_research_prompt method in Discovarr handles the case where request.prompt (template_string) is None
+        # by attempting to use the default research prompt from settings.
+        # It also has its own try-except that returns an error message string if rendering fails.
+        rendered_prompt = discovarr.get_research_prompt(
+            media_name=request.media_name,
+            template_string=request.prompt
+        )
+        # If get_research_prompt returns an error message string, pass it through.
+        return {"result": rendered_prompt}
+    except Exception as e:
+        # This outer try-except catches unexpected errors in this endpoint logic itself,
+        # or if get_research_prompt were to raise an exception instead of returning an error string.
+        logger.error(f"Error generating research prompt preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while generating research prompt preview: {str(e)}")
+
+###
+# Ollama
+# LLM (Combined)
+
 ###
 # Ollama
 # LLM (Combined)
@@ -593,6 +663,27 @@ async def delete_media_item(
     except Exception as e:
         logger.error(f"Error deleting media item {media_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_app.get("/media/search", response_model=list[MediaSearchResultItem])
+async def search_media_endpoint(
+    query: str,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Search for media items in the database by a query string.
+    Returns a list of items with title, media_id (tmdb_id), and media_type.
+    """
+    logger.info(f"Received media search request with query: '{query}'")
+    if not query:
+        raise HTTPException(status_code=400, detail="Query parameter cannot be empty.")
+    try:
+        results = discovarr.search_media(query)
+        return results
+    except Exception as e:
+        logger.error(f"Error during media search for query '{query}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during media search: {str(e)}")
+
+
 
 @api_app.get("/quality-profiles/{media_type}")
 async def get_quality_profiles(

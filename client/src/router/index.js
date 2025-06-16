@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MediaListView from '../views/MediaListView.vue'
 import SettingsView from '../views/SettingsView.vue'
-import SearchView from '../views/SearchView.vue' // Import the new SearchView
+import SearchView from '../views/SearchView.vue'
+import ResearchView from '../views/ResearchView.vue'
 import WatchHistory from '../views/WatchHistoryView.vue'
 
 const router = createRouter({
@@ -22,6 +23,11 @@ const router = createRouter({
       name: 'search-view',
       component: SearchView,
       props: true // Automatically pass route params as props to the component
+    },
+    {
+      path: '/research',
+      name: 'research',
+      component: ResearchView
     },
     {
       path: '/watch-history',
