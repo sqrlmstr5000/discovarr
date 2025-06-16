@@ -1,6 +1,8 @@
 # Migrate
 
-### Migrate sqlite database to postgres
+I goal here is to create a way to migrate from an existing sqlite database to postgres. TDB
+
+### Migrate sqlite database to postgres (*Doesn't work. pgloader seems to be abandoned)
 ```
 psql: CREATE DATABASE discovarr_test_migrate;
 
@@ -12,5 +14,5 @@ load database
   set work_mem to '16MB', maintenance_work_mem to '512 MB';
 EOF
 
-sudo pgloader -v /tmp/migrate.pgloader
+sudo pgloader -vd /tmp/migrate.pgloader
 ```

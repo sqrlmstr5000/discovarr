@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
 from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
+import sqlite_vec
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
 from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaDetail
@@ -123,6 +124,7 @@ class Database:
         # Prepare the list of models for table creation
         default_models = list(BASE_MODELS) # Start with the base list of models from models.py
 
+        self.logger.info(f"Database type set to: {self.db_type}. Initializing vector extension and adding MediaDetail table...")
         if self.db_type == "postgres":
             try:
                 # Attempt to create the 'vector' extension if it doesn't exist.
@@ -139,7 +141,7 @@ class Database:
                 vector_extension_exists = False
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred while trying to enable the 'vector' extension: {e}. "
-                                  "MediaDetail table may not be configured as expected.")
+                                  "MediaDetail table may not be configured as expected.", exc_info=True)
                 vector_extension_exists = False
 
             if vector_extension_exists:
@@ -151,6 +153,22 @@ class Database:
                 self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaDetail table will NOT be included.")
                 if MediaDetail in default_models: # Remove if it was in BASE_MODELS and extension is not active
                     default_models.remove(MediaDetail)
+        elif self.db_type == "sqlite":
+            sqlite_vec_loaded_successfully = False 
+            try:
+                #database.load_extension("sqlite_vec")
+                sqlite_vec.load(database)
+                self.logger.info("Successfully loaded sqlite_vec extension for SQLite.")
+                sqlite_vec_loaded_successfully = True
+            except Exception as e:
+                self.logger.error(f"Failed to load sqlite_vec extension for SQLite: {e}. "
+                                   "Vector search capabilities for SQLite will be unavailable. "
+                                   "Ensure 'sqlite-vec' is correctly installed and accessible.", exc_info=True)
+            
+            if sqlite_vec_loaded_successfully:
+                if MediaDetail not in default_models: default_models.append(MediaDetail)
+            else:
+                if MediaDetail in default_models: default_models.remove(MediaDetail)
 
         self.backup_service = BackupService(logger=self.logger, db_type=self.db_type, db_config=db_config_for_backup)
 
