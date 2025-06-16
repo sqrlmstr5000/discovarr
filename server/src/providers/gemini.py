@@ -36,6 +36,68 @@ class GeminiProvider(LLMProviderBase):
         """Returns the name of the LLM provider."""
         return self.PROVIDER_NAME
 
+    async def _generate_content(
+        self,
+        model: str,
+        prompt_data: str, # For Gemini, prompt_data is a string
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = 0.7,
+        response_format_details: Optional[Any] = None, # Pydantic model for response_schema
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Generates content using the Gemini API.
+        """
+        if not self.gemini_api_key:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': "Gemini API Key is not configured."}
+
+        config_params = {
+            "system_instruction": system_prompt,
+            "temperature": temperature,
+            "response_mime_type": "application/json", # Assuming JSON for structured output
+        }
+        if response_format_details: # This should be a Pydantic model for Gemini
+            config_params["response_schema"] = response_format_details
+
+        thinking_config_param = None
+        thinking_budget_kwarg = kwargs.get('thinking_budget')
+        # Check if model supports thinking_config (e.g., 1.5 series)
+        if "1.5-pro" in model or "1.5-flash" in model: # Adjusted model check
+            if thinking_budget_kwarg is not None:
+                try:
+                    tb_float = float(thinking_budget_kwarg)
+                    if tb_float > 0: # Assuming 0 or negative means disable
+                        thinking_config_param = types.ThinkingConfig(thinking_budget=tb_float)
+                        self.logger.debug(f"Applying thinking_budget {tb_float} for model {model}.")
+                    else:
+                        self.logger.debug(f"Thinking_budget is {tb_float}, not applying thinking_config for model {model}.")
+                except ValueError:
+                    self.logger.warning(f"Invalid thinking_budget value '{thinking_budget_kwarg}' for model {model}. Disabling thinking_config.")
+        
+        if thinking_config_param:
+            config_params["thinking_config"] = thinking_config_param
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=model,
+                contents=prompt_data, # 'contents' takes the string prompt
+                config=types.GenerateContentConfig(**config_params)
+            )
+            content = json.loads(response.text) # Parsed content based on response_schema
+
+            usage_meta = response.usage_metadata
+            token_counts = {
+                'prompt_token_count': usage_meta.prompt_token_count,
+                'candidates_token_count': usage_meta.candidates_token_count,
+                'thoughts_token_count': usage_meta.thoughts_token_count,
+                'total_token_count': usage_meta.total_token_count,
+            }
+            return {'success': True, 'content': content, 'token_counts': token_counts}
+        except json.JSONDecodeError as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Gemini API returned non-JSON or malformed JSON response: {response.text if 'response' in locals() else 'Response object not available'} - {e}"}
+        except Exception as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Gemini API general error: {e}"}
+
     async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
         """
         Uses the Gemini API to find media similar to the given media name.
@@ -60,81 +122,28 @@ class GeminiProvider(LLMProviderBase):
         if not self.gemini_api_key:
             self.logger.error("Gemini API Key is not configured.")
             return {'success': False, 'message': "Gemini API Key is not configured.", 'status_code': 500}
-        
-        thinking_budget = kwargs.get('thinking_budget', 0.0)
-        tb_float = None
 
-        try:
-            self.logger.debug(f"Using prompt: {prompt}")
+        self.logger.debug(f"get_similar_media using prompt: {prompt}")
 
-            # Conditionally add thinking_config
-            thinking_budget_value = kwargs.get('thinking_budget') # Can be None
-            
-            # Models that support thinking_budget
-            # Forced to use an if-else structure here due to the following error: pydantic_core._pydantic_core.ValidationError: Extra inputs are not permitted
-            if model.startswith("gemini-2.5-flash") or \
-               model.startswith("gemini-2.5-pro"):
-                if thinking_budget_value is not None:
-                    try:
-                        tb_float = float(thinking_budget_value)
-                        self.logger.debug(f"Applying thinking_budget {tb_float} for model {model}.")
-                    except ValueError:
-                        self.logger.warning(f"Invalid thinking_budget value '{thinking_budget_value}' for model {model}. Disabling thinking_config.")
-                elif thinking_budget_value is not None:
-                    self.logger.info(f"Model {model} does not support thinking_budget. Ignoring parameter.")
-                response = await self.client.aio.models.generate_content(model=model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
-                        system_instruction=system_prompt,
-                        temperature=temperature,
-                        response_mime_type="application/json",
-                        response_schema=SuggestionList
-                    ))
-            else:
-                response = await self.client.aio.models.generate_content(model=model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=temperature,
-                        response_mime_type="application/json",
-                        response_schema=SuggestionList
-                    ))
-                       
-            gemini_response = json.loads(response.text)
-            
-            # Extract token counts from usage metadata
-            usage_meta = response.usage_metadata
-            self.logger.debug(f"Gemini Usage Metadata: {usage_meta}")
-            token_counts = {
-                'prompt_token_count': usage_meta.prompt_token_count,
-                'candidates_token_count': usage_meta.candidates_token_count,
-                'thoughts_token_count': usage_meta.thoughts_token_count,
-                'total_token_count': usage_meta.total_token_count,
-            }
-            
-            self.logger.debug(f"Token usage stats: {token_counts}")
-            
-            return {
-                'success': True, 
-                'response': gemini_response,
-                'token_counts': token_counts
-            }
-        except json.JSONDecodeError:
-            # This happens if response.text is not valid JSON after a successful HTTP call
-            error_message = "Gemini API returned non-JSON or malformed JSON response."
-            self.logger.error(error_message)
-            self.logger.debug(f"Gemini response text: {response.text if 'response' in locals() else 'Response object not available'}")
-            return {'success': False, 'message': error_message, 'status_code': 500}
-        # The general Exception below will catch specific genai.types exceptions
-        # such as BlockedPromptException, StopCandidateException, InternalServerError,
-        # DeadlineExceededError, and other GenerativeAIException types.
-        # Their specific error messages will be captured by str(e).
-        # We will use a default status_code of 500 for these.
-        except Exception as e:
-            error_message = f"Gemini API general error: {e}"
-            self.logger.exception(error_message)  # Log the full exception
-            return {'success': False, 'message': str(e), 'status_code': 500} # Return a simple string message
+        generation_result = await self._generate_content(
+            model=model,
+            prompt_data=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            response_format_details=SuggestionList, # Specific Pydantic model for this task
+            thinking_budget=kwargs.get('thinking_budget') 
+        )
+
+        if not generation_result['success']:
+            self.logger.error(f"Failed to get similar media from Gemini: {generation_result.get('message')}")
+            return {'success': False, 'message': generation_result.get('message', 'Generation failed'), 'status_code': 500}
+
+        self.logger.debug(f"Gemini token usage for get_similar_media: {generation_result['token_counts']}")
+        return {
+            'success': True,
+            'response': generation_result['content'], # This is the parsed SuggestionList
+            'token_counts': generation_result['token_counts']
+        }
 
     async def get_models(self) -> Optional[List[str]]:
         """

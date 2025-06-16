@@ -8,10 +8,8 @@ const radarrQualityProfiles = ref([])
 const loadingRadarrProfiles = ref(false)
 const sonarrQualityProfiles = ref([])
 const loadingSonarrProfiles = ref(false)
-const geminiModels = ref([]);
-const ollamaModels = ref([]);
-const loadingOllamaModels = ref(false);
-const loadingGeminiModels = ref(false);
+const llmModels = ref({}); // Will store models keyed by provider name
+const loadingLlmModels = ref(false);
 const tokenUsageSummary = ref(null)
 const users = ref([]);
 const loadingUsers = ref(false);
@@ -57,6 +55,14 @@ const llmProviderSettings = computed(() => {
       return baseProvider === 'llm';
     })
     .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+});
+
+const geminiModels = computed(() => {
+  return llmModels.value?.gemini || [];
+});
+
+const ollamaModels = computed(() => {
+  return llmModels.value?.ollama || [];
 });
 
 // Helper functions for type checking
@@ -112,47 +118,30 @@ const loadSettings = async () => {
   }
 }
 
-// Load Gemini models
-const fetchGeminiModels = async () => {
-  // Check if Gemini API key is set before fetching models
-  if (!settings.value || !settings.value.gemini || !settings.value.gemini.api_key || !settings.value.gemini.api_key.value) {
-    console.log('Gemini API key not set. Skipping fetching models.');
-    geminiModels.value = []; // Ensure models list is empty
-    loadingGeminiModels.value = false;
-    return;
-  }
-  loadingGeminiModels.value = true;
-  try {
-    const response = await fetch(`${config.apiUrl}/gemini/models`);
-    if (!response.ok) throw new Error('Failed to load Gemini models');
-    geminiModels.value = await response.json();
-  } catch (error) {
-    console.error('Error loading Gemini models:', error);
-    geminiModels.value = []; // Set to empty array on error
-  } finally {
-    loadingGeminiModels.value = false;
-  }
-};
+// Load LLM models (Gemini, Ollama, etc.)
+const fetchLlmModels = async () => {
+  // Check if at least one LLM provider is enabled in settings
+  const geminiEnabled = settings.value?.gemini?.enabled?.value;
+  const ollamaEnabled = settings.value?.ollama?.enabled?.value;
 
-// Load Ollama models
-const fetchOllamaModels = async () => {
-  // Check if Ollama is enabled before fetching models
-  if (!settings.value || !settings.value.ollama || !settings.value.ollama.enabled || !settings.value.ollama.enabled.value) {
-    console.log('Ollama is not enabled. Skipping fetching models.');
-    ollamaModels.value = []; // Ensure models list is empty
-    loadingOllamaModels.value = false;
+  if (!geminiEnabled && !ollamaEnabled) {
+    console.log('No LLM providers (Gemini or Ollama) are enabled. Skipping fetching LLM models.');
+    llmModels.value = {}; // Ensure models object is empty
+    loadingLlmModels.value = false;
     return;
   }
-  loadingOllamaModels.value = true;
+
+  loadingLlmModels.value = true;
   try {
-    const response = await fetch(`${config.apiUrl}/ollama/models`);
-    if (!response.ok) throw new Error('Failed to load Ollama models');
-    ollamaModels.value = await response.json();
+    const response = await fetch(`${config.apiUrl}/llm/models`);
+    if (!response.ok) throw new Error('Failed to load LLM models');
+    llmModels.value = await response.json(); // Expects format: { "gemini": [...], "ollama": [...] }
+    console.log('LLM Models loaded:', llmModels.value);
   } catch (error) {
-    console.error('Error loading Ollama models:', error);
-    ollamaModels.value = []; // Set to empty array on error
+    console.error('Error loading LLM models:', error);
+    llmModels.value = {}; // Set to empty object on error
   } finally {
-    loadingOllamaModels.value = false;
+    loadingLlmModels.value = false;
   }
 };
 // Load Radarr quality profiles
@@ -302,12 +291,8 @@ const updateSetting = async (group, name) => {
 
     // If a setting for an enabled Gemini provider was changed (e.g., API key updated, or enabled set to true),
     // attempt to fetch/refresh its models.
-    if (group === 'gemini' && settings.value.gemini?.enabled?.value === true) {
-        await fetchGeminiModels();
-    } 
-    // Similarly for Ollama. This is especially relevant if 'enabled' was just set to true.
-    else if (group === 'ollama' && settings.value.ollama?.enabled?.value === true) {
-        await fetchOllamaModels();
+    if ((group === 'gemini' && settings.value.gemini?.enabled?.value === true) || (group === 'ollama' && settings.value.ollama?.enabled?.value === true)) {
+        await fetchLlmModels();
     }
     // If a Radarr setting was updated and its API key is set, refresh profiles
     else if (group === 'radarr' && settings.value.radarr?.api_key?.value) {
@@ -462,14 +447,9 @@ onMounted(async () => { // Make onMounted async
     fetchSonarrQualityProfiles();
   }
 
-  // Fetch Gemini models only if Gemini is enabled
-  if (settings.value?.gemini?.enabled?.value) {
-    fetchGeminiModels();
-  }
-  // Fetch Ollama models only if Ollama is enabled
-  if (settings.value?.ollama?.enabled?.value) {
-    fetchOllamaModels();
-  }
+  // Fetch LLM models if any LLM provider is enabled
+  await fetchLlmModels();
+
   // Fetch users only if at least one library provider is enabled
   if (atLeastOneLibraryProviderEnabled.value) {
     await fetchUsers();
@@ -842,10 +822,10 @@ onMounted(async () => { // Make onMounted async
                       v-model="settingDetails.value"
                       @change="updateSetting(groupName, settingName)"
                       class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                      :disabled="loadingGeminiModels"
+                      :disabled="loadingLlmModels"
                     >
                       <option :value="null">
-                        {{ loadingGeminiModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
+                        {{ loadingLlmModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
                       </option>
                       <option v-for="modelName in geminiModels" :key="modelName" :value="modelName">
                         {{ modelName }}
@@ -860,10 +840,10 @@ onMounted(async () => { // Make onMounted async
                       v-model="settingDetails.value"
                       @change="updateSetting(groupName, settingName)"
                       class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                      :disabled="loadingOllamaModels"
+                      :disabled="loadingLlmModels"
                     >
                       <option :value="null">
-                        {{ loadingOllamaModels ? 'Loading models...' : (ollamaModels.length === 0 ? 'No models available (is Ollama enabled?)' : 'Select a model...') }}
+                        {{ loadingLlmModels ? 'Loading models...' : (ollamaModels.length === 0 ? 'No models available (is Ollama enabled?)' : 'Select a model...') }}
                       </option>
                       <option v-for="modelName in ollamaModels" :key="modelName" :value="modelName">
                         {{ modelName }}

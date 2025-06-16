@@ -42,6 +42,47 @@ class OllamaProvider(LLMProviderBase):
         """Returns the name of the LLM provider."""
         return self.PROVIDER_NAME
 
+    async def _generate_content(
+        self,
+        model: str,
+        prompt_data: List[Dict[str, str]], # For Ollama, prompt_data is a list of messages
+        system_prompt: Optional[str] = None, # System prompt is part of prompt_data for Ollama
+        temperature: Optional[float] = 0.7,
+        response_format_details: Optional[Any] = None, # JSON schema for 'format' parameter
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Generates content using the Ollama API.
+        """
+        if not self.client:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': "Ollama client is not initialized."}
+
+        options = {}
+        if temperature is not None:
+            options['temperature'] = temperature
+
+        try:
+            self.logger.debug(f"Sending request to Ollama model {model} with messages: {prompt_data}")
+            response = await self.client.chat(
+                model=model,
+                messages=prompt_data,
+                format=response_format_details, # This should be SuggestionList.model_json_schema() or similar
+                options=options if options else None
+            )
+
+            content = json.loads(response['message']['content'])
+            token_counts = {
+                'prompt_token_count': response.get('prompt_eval_count', 0),
+                'candidates_token_count': response.get('eval_count', 0),
+                'thoughts_token_count': 0, # Ollama doesn't have a direct 'thoughts' token count
+                'total_token_count': response.get('prompt_eval_count', 0) + response.get('eval_count', 0),
+            }
+            return {'success': True, 'content': content, 'token_counts': token_counts}
+        except json.JSONDecodeError as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Ollama API returned non-JSON or malformed JSON response: {response['message']['content'] if 'response' in locals() and 'message' in response and 'content' in response['message'] else 'Response content not available'} - {e}"}
+        except Exception as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Ollama API general error: {e}"}
+
     async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
         """
         Uses the Ollama API to find media similar to the user's prompt, returning structured JSON.
@@ -62,7 +103,7 @@ class OllamaProvider(LLMProviderBase):
         """
         if not self.client:
             self.logger.error("Ollama client is not initialized.")
-            return {'success': False, 'message': "Ollama client is not initialized.", 'status_code': 500}
+            return {'success': False, 'message': "Ollama client is not initialized.", 'status_code': 500, 'response': None, 'token_counts': None}
 
         # Ollama chat endpoint usually expects a system message.
         if system_prompt is None:
@@ -73,40 +114,26 @@ class OllamaProvider(LLMProviderBase):
             {'role': 'user', 'content': prompt}
         ]
 
-        try:
-            self.logger.debug(f"Sending request to Ollama model {model} with prompt: {prompt}")
-            self.logger.debug(f"System prompt for Ollama: {system_prompt}")
+        self.logger.debug(f"get_similar_media using prompt: {prompt} and system_prompt: {system_prompt}")
 
-            response = await self.client.chat(
-                model=model,
-                messages=messages,
-                format=SuggestionList.model_json_schema(),  
-                options={'temperature': temperature} if temperature is not None else None
-            )
+        generation_result = await self._generate_content(
+            model=model,
+            prompt_data=messages,
+            temperature=temperature,
+            response_format_details=SuggestionList.model_json_schema(), # Specific schema format for this task
+            **kwargs # Pass through other kwargs if any
+        )
 
-            ollama_response_content = response['message']['content']
-            parsed_json_response = json.loads(ollama_response_content)
+        if not generation_result['success']:
+            self.logger.error(f"Failed to get similar media from Ollama: {generation_result.get('message')}")
+            return {'success': False, 'message': generation_result.get('message', 'Generation failed'), 'status_code': 500, 'response': None, 'token_counts': None}
 
-            token_counts = {
-                'prompt_token_count': response.get('prompt_eval_count', 0),
-                'candidates_token_count': response.get('eval_count', 0), # Ollama calls this eval_count
-                'thoughts_token_count': 0, # Ollama doesn't have a direct 'thoughts' token count
-                'total_token_count': response.get('prompt_eval_count', 0) + response.get('eval_count', 0),
-            }
-            self.logger.debug(f"Ollama token usage: {token_counts}")
-
-            return {
-                'success': True, 
-                'response': parsed_json_response,
-                'token_counts': token_counts
-            }
-        except json.JSONDecodeError:
-            self.logger.error(f"Ollama API returned non-JSON or malformed JSON response: {ollama_response_content if 'ollama_response_content' in locals() else 'Response content not available'}")
-            return {'success': False, 'message': "Ollama API returned non-JSON response.", 'status_code': 500}
-        except Exception as e:
-            error_message = f"Ollama API general error: {e}"
-            self.logger.exception(error_message) # Log the full exception
-            return {'success': False, 'message': str(e), 'status_code': 500} # Return a simple string message
+        self.logger.debug(f"Ollama token usage for get_similar_media: {generation_result['token_counts']}")
+        return {
+            'success': True,
+            'response': generation_result['content'], # This is the parsed SuggestionList
+            'token_counts': generation_result['token_counts']
+        }
 
     async def get_models(self) -> Optional[List[str]]:
         """Lists available models from the Ollama server."""

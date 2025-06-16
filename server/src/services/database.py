@@ -8,7 +8,7 @@ import json
 from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS as BASE_MODELS, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaDetail
+from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaDetail
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -280,7 +280,7 @@ class Database:
     def _add_default_tasks(self):
         # Add default search if it doesn't exist
         self.add_search(
-            prompt=SettingsService._DEFAULT_PROMPT_TEMPLATE, # Use _DEFAULT_PROMPT_TEMPLATE
+            prompt=DEFAULT_PROMPT_TEMPLATE, 
             name="recently_watched",
             id=1)
         

@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from urllib.parse import urlparse
-from .models import Settings, SettingType # Import SettingType from models
+from .models import Settings, SettingType, DEFAULT_PROMPT_TEMPLATE, DEFAULT_PROMPT_RESEARCH_TEMPLATE
 
 if TYPE_CHECKING:
     from ..discovarr import Discovarr # For type hinting Discovarr instance
@@ -16,10 +16,11 @@ class SettingsService:
     """
     
     # Default settings by group with types and validation
-    _DEFAULT_PROMPT_TEMPLATE = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{all_media}}"
+    
     _BASE_DEFAULT_SETTINGS = {
         "app": {
-            "default_prompt": {"value": _DEFAULT_PROMPT_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
+            "default_prompt": {"value": DEFAULT_PROMPT_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Search page"},
+            "default_research_prompt": {"value": DEFAULT_PROMPT_RESEARCH_TEMPLATE, "type": SettingType.STRING, "description": "Default prompt template to use on the Research page"},
             "recent_limit": {"value": 10, "type": SettingType.INTEGER, "description": "Number of recent items to fetch"},
             "suggestion_limit": {"value": 20, "type": SettingType.INTEGER, "description": "Maximum number of suggestions to return"},
             "request_only": {"value": False, "type": SettingType.BOOLEAN, "description": "Sets the search_for_missing to False when requesting media from Radarr and Sonarr. This won't start a search just add the media."},
@@ -160,13 +161,14 @@ class SettingsService:
                     Settings.create(
                         group=group,
                         name=name,
-                        value=env_value,  # Use environment variable value if set
+                        # Use environment variable if set, otherwise use the default from config
+                        value=env_value if env_value is not None else config["value"],
                         type=config["type"].value,
                         description=config["description"],
                         created_at=datetime.now(),
                         updated_at=datetime.now()
                     )
-                    self.logger.info(f"Created setting {group}.{name} with value from {env_var if env_value else 'defaults'}")
+                    self.logger.info(f"Created setting {group}.{name} with value from {'environment variable ' + env_var if env_value is not None else 'defaults'}")
 
     def get(self, group: str, name: str) -> Optional[Any]:
         """Get a setting value with proper type conversion."""

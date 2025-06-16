@@ -19,6 +19,7 @@ from services.scheduler import DiscovarrScheduler
 from services.settings import SettingsService
 from services.response import APIResponse
 from services.image_cache import ImageCacheService 
+from services.llm import LLMService # Import the new LLMService
 from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
@@ -91,6 +92,11 @@ class Discovarr:
         self.auto_media_save = None
         self.system_prompt = None 
 
+        self.enabled_providers: Dict[str, List[str]] = {
+            "library": [],
+            "llm": [],
+            "request": []
+        }
         self.plex = None # Initialize Plex service instance
         self.jellyfin = None
         self.radarr = None
@@ -98,6 +104,7 @@ class Discovarr:
         self.gemini = None
         self.ollama = None
         self.trakt = None # Initialize Trakt service instance
+        self.llm_service = None # Initialize LLMService instance
         self.tmdb = None
 
         self.db_path = db_path
@@ -165,7 +172,39 @@ class Discovarr:
         self.tmdb_api_key = self.settings.get("tmdb", "api_key")
         self.system_prompt = self.settings.get("app", "system_prompt")
         
-        self.jellyfin_auth = None # This seems to be an unused attribute, keeping for now
+        # Reset and populate enabled_providers dictionary
+        self.enabled_providers: Dict[str, List[str]] = {
+            "library": [],
+            "llm": [],
+            "request": []
+        }
+
+        if self.jellyfin_enabled:
+            self.enabled_providers["library"].append(JellyfinProvider.PROVIDER_NAME)
+        if self.plex_enabled:
+            self.enabled_providers["library"].append(PlexProvider.PROVIDER_NAME)
+        if self.trakt_enabled:
+            self.enabled_providers["library"].append(TraktProvider.PROVIDER_NAME)
+        
+        if self.gemini_enabled:
+            self.enabled_providers["llm"].append(GeminiProvider.PROVIDER_NAME)
+        if self.ollama_enabled:
+            self.enabled_providers["llm"].append(OllamaProvider.PROVIDER_NAME)
+
+        # Radarr and Sonarr are "enabled" if their URL and API key are configured
+        if self.radarr_url and self.radarr_api_key:
+            self.enabled_providers["request"].append("radarr")
+        if self.sonarr_url and self.sonarr_api_key:
+            self.enabled_providers["request"].append("sonarr")
+            
+        # Log enabled providers for each category
+        any_providers_enabled = False
+        for category, providers_list in self.enabled_providers.items():
+            if providers_list: # Only log if there are providers in the category
+                self.logger.info(f"Enabled {category.capitalize()} Providers: {', '.join(providers_list)}")
+                any_providers_enabled = True
+        if not any_providers_enabled:
+            self.logger.info("No providers are currently enabled.") 
 
         # Validate the loaded configuration
         try:
@@ -242,6 +281,15 @@ class Discovarr:
         else:
             self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
+
+        # Initialize LLMService with configured providers and settings
+        self.llm_service = LLMService(
+            logger=self.logger,
+            settings_service=self.settings,
+            enabled_llm_provider_names=self.enabled_providers.get("llm", []),
+            gemini_provider=self.gemini,
+            ollama_provider=self.ollama
+        )
         self.logger.info("Discovarr configuration processed and services (re)initialized.")
 
     def _validate_configuration(self) -> None:
@@ -431,46 +479,24 @@ class Discovarr:
             template_string = custom_prompt
         prompt = self.get_prompt(limit=self.suggestion_limit, media_name=media_name, template_string=template_string)
 
-        provider_result: Optional[Dict[str, Any]] = None
-        model_provider_name: Optional[str] = None
-        model_to_log: Optional[str] = None
+        if not self.llm_service:
+            self.logger.error("LLMService is not initialized.")
+            return {'success': False, 'message': "LLMService not initialized.", 'status_code': 500}
 
-        if self.gemini:
-            if not self.gemini_model:
-                self.logger.error("Gemini model is not configured.")
-                return {'success': False, 'message': "Gemini model is not configured.", 'status_code': 500}
-            model_provider_name = "Gemini"
-            model_to_log = self.gemini_model
-            provider_result = await self.gemini.get_similar_media(
-                prompt=prompt, 
-                model=self.gemini_model, 
-                system_prompt=self.system_prompt, 
-                temperature=self.gemini_temperature, 
-                thinking_budget=self.gemini_thinking_budget
-            )
-        elif self.ollama:
-            if not self.ollama_model:
-                self.logger.error("Ollama model is not configured.")
-                return {'success': False, 'message': "Ollama model is not configured.", 'status_code': 500}
-            model_provider_name = "Ollama"
-            model_to_log = self.ollama_model
-            provider_result = await self.ollama.get_similar_media(
-                prompt=prompt, 
-                model=self.ollama_model, 
-                system_prompt=self.system_prompt, 
-                temperature=self.ollama_temperature
-            )
-        else:
-            self.logger.warning("No LLM provider (Gemini or Ollama) is enabled or configured.")
-            return {'success': False, 'message': "No LLM provider is configured.", 'status_code': 503}
+        provider_result = await self.llm_service.generate_suggestions(
+            prompt=prompt,
+            system_prompt=self.system_prompt
+            # kwargs for specific providers can be passed here if LLMService is adapted
+            # For now, temperature and thinking_budget are handled within LLMService via settings
+        )
 
         if not provider_result: # Should ideally not happen if providers return error dicts
-            self.logger.error(f"LLM provider ({model_provider_name}) returned an unexpected None result.")
-            return {'success': False, 'message': f"LLM provider ({model_provider_name}) returned None.", 'status_code': 500}
+            self.logger.error(f"LLM provider returned an unexpected None result.")
+            return {'success': False, 'message': f"LLM provider returned None.", 'status_code': 500}
 
         # Check if the provider_result indicates an error
         if provider_result.get('success') is False:
-            self.logger.error(f"Error from {model_provider_name} (model: {model_to_log}): {provider_result.get('message')}")
+            self.logger.error(f"Error from LLM Service: {provider_result.get('message')}")
             return provider_result # Propagate the error dictionary
 
         # If successful, provider_result contains 'response' and 'token_counts'
@@ -478,15 +504,15 @@ class Discovarr:
         token_counts = provider_result.get('token_counts')
 
         if not llm_api_response_content or not isinstance(llm_api_response_content.get("suggestions"), list):
-            self.logger.error(f"LLM provider ({model_provider_name}) response content is missing 'suggestions' list or is malformed.")
+            self.logger.error(f"LLM provider response content is missing 'suggestions' list or is malformed.")
             self.logger.debug(f"LLM Response Content: {llm_api_response_content}")
             return {'success': False, 'message': "LLM response malformed or missing suggestions.", 'status_code': 500}
 
         if token_counts and search_id:
             self.db.add_search_stat(search_id, token_counts)
             self.logger.debug(f"Stored token usage stats for search {search_id}: {token_counts}")
-
-        self.logger.info(f"Similar Media from {model_provider_name} (model: {model_to_log}): {json.dumps(llm_api_response_content, indent=2)}")
+        # model_provider_name and model_to_log are not directly available here anymore, LLMService logs them.
+        self.logger.info(f"Similar Media: {json.dumps(llm_api_response_content, indent=2)}")
         
         suggestions_from_llm = llm_api_response_content.get("suggestions", [])
         processed_suggestions_for_client: List[Dict[str, Any]] = []
@@ -632,40 +658,18 @@ class Discovarr:
         except Exception as e:
             self.logger.error(f"An unexpected error occurred during watch history processing: {e}", exc_info=True)
 
-    async def gemini_get_models(self) -> Optional[List[Dict[str, Any]]]:
+    async def get_llm_models(self) -> Dict[str, Optional[List[str]]]:
         """
-        Retrieves the list of available Gemini models.
+        Retrieves available models from all enabled LLM providers via LLMService.
 
         Returns:
-            Optional[List[Dict[str, Any]]]: A list of model details or None if Gemini service is not available or an error occurs.
+            Dict[str, Optional[List[str]]]: A dictionary where keys are provider names
+                                            and values are lists of model names, or None if error.
         """
-        if not self.gemini:
-            self.logger.warning("Gemini service is not configured. Cannot retrieve models.")
+        if not self.llm_service:
+            self.logger.error("LLMService is not initialized. Cannot retrieve LLM models.")
             return None
-        try:
-            self.logger.info("Fetching available Gemini models.")
-            return await self.gemini.get_models()
-        except Exception as e:
-            self.logger.error(f"Error retrieving Gemini models from Discovarr: {e}", exc_info=True)
-            return None
-        
-    async def ollama_get_models(self) -> Optional[List[str]]:
-        """
-        Retrieves the list of available Ollama models.
-
-        Returns:
-            Optional[List[str]]: A list of model names or None if Ollama service is not available or an error occurs.
-        """
-        if not self.ollama:
-            self.logger.warning("Ollama service is not configured. Cannot retrieve models.")
-            return None
-        try:
-            self.logger.info("Fetching available Ollama models.")
-            return await self.ollama.get_models()
-        except Exception as e:
-            self.logger.error(f"Error retrieving Ollama models from Discovarr: {e}", exc_info=True)
-            return None
-
+        return await self.llm_service.get_available_models()
 
     async def _cache_image_if_needed(self, image_url: str, provider_name: str, item_id: Union[str, int]) -> Optional[str]:
         """

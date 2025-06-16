@@ -46,6 +46,32 @@ class LLMProviderBase(ABC):
         pass
 
     @abstractmethod
+    async def _generate_content(
+        self,
+        model: str,
+        prompt_data: Any,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = 0.7,
+        response_format_details: Optional[Any] = None,
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Low-level content generation method to be implemented by each provider.
+
+        Args:
+            model (str): The specific model to use.
+            prompt_data (Any): Provider-specific prompt input (e.g., string, list of messages).
+            system_prompt (Optional[str]): System instructions for the LLM.
+            temperature (Optional[float]): Controls randomness.
+            response_format_details (Optional[Any]): Provider-specific details for response formatting (e.g., Pydantic model, JSON schema).
+            **kwargs: Additional provider-specific parameters.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing 'success' (bool), 'content' (Any), 'token_counts' (Optional[Dict]), and 'message' (Optional[str]).
+        """
+        pass
+
+    @abstractmethod
     async def get_models(self) -> Optional[List[str]]:
         """
         Lists available model names for this LLM provider.

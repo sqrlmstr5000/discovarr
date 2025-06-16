@@ -410,20 +410,6 @@ async def gemini_similar_media_by_search(
         logger.error(f"Error running saved search: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_app.get("/gemini/models")
-async def get_gemini_models(
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve available Gemini models.
-    """
-    logger.info("Received request to list Gemini models.")
-    models = await discovarr.gemini_get_models() # Await the async call
-    if models is None:
-        # This could happen if Gemini is not configured or if there's an API error during listing
-        raise HTTPException(status_code=503, detail="Gemini service unavailable or error fetching models.")
-    return models
-
 @api_app.get("/gemini/similar_media/{media_name}")
 async def gemini_similar_media(
     media_name: str,
@@ -476,18 +462,20 @@ async def gemini_similar_media_with_prompt(
 
 ###
 # Ollama
+# LLM (Combined)
 ###
-@api_app.get("/ollama/models")
-async def get_ollama_models(
+@api_app.get("/llm/models")
+async def get_llm_provider_models(
     discovarr: Discovarr = Depends(get_discovarr),
 ):
     """
-    Endpoint to retrieve available Ollama models.
+    Endpoint to retrieve available models from all enabled LLM providers.
     """
-    logger.info("Received request to list Ollama models.")
-    models = await discovarr.ollama_get_models() 
+    logger.info("Received request to list models from all enabled LLM providers.")
+    models = await discovarr.get_llm_models()
     if models is None:
-        raise HTTPException(status_code=503, detail="Ollama service unavailable or error fetching models.")
+        # This could happen if LLMService is not initialized or if there's an error during listing
+        raise HTTPException(status_code=503, detail="LLM service unavailable or error fetching models.")
     return models
 
 @api_app.post("/request/{tmdb_id}")
