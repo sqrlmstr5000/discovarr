@@ -70,7 +70,7 @@ class Media(PeeweeBaseModel):
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
-class MediaDetail(PeeweeBaseModel):
+class MediaResearch(PeeweeBaseModel):
     media = ForeignKeyField(Media, backref='detail', unique=True, on_delete='CASCADE') # One-to-one relationship
     research = TextField(null=False) # To store research notes or extended details
     embedding = VectorField(dimensions=768) # Default for multi-qa-mpnet-base-cos-v1 https://www.sbert.net/docs/sentence_transformer/pretrained_models.html#semantic-search-models

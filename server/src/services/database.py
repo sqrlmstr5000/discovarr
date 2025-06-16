@@ -9,7 +9,7 @@ from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalErro
 import sqlite_vec
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaDetail
+from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaResearch
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -124,7 +124,7 @@ class Database:
         # Prepare the list of models for table creation
         default_models = list(BASE_MODELS) # Start with the base list of models from models.py
 
-        self.logger.info(f"Database type set to: {self.db_type}. Initializing vector extension and adding MediaDetail table...")
+        self.logger.info(f"Database type set to: {self.db_type}. Initializing vector extension and adding MediaResearch table...")
         if self.db_type == "postgres":
             try:
                 # Attempt to create the 'vector' extension if it doesn't exist.
@@ -136,23 +136,23 @@ class Database:
                 # This can happen if the extension is not installed on the server,
                 # or if the user lacks permissions to create extensions.
                 self.logger.warning(f"Failed to create or confirm 'vector' extension in PostgreSQL: {op_err}. "
-                                   "The MediaDetail table (and vector features) will not be available. "
+                                   "The MediaResearch table (and vector features) will not be available. "
                                    "Ensure the 'vector' extension is installed on your PostgreSQL server and the user has permissions.")
                 vector_extension_exists = False
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred while trying to enable the 'vector' extension: {e}. "
-                                  "MediaDetail table may not be configured as expected.", exc_info=True)
+                                  "MediaResearch table may not be configured as expected.", exc_info=True)
                 vector_extension_exists = False
 
             if vector_extension_exists:
-                self.logger.info("PostgreSQL 'vector' extension is active. MediaDetail table will be included.")
+                self.logger.info("PostgreSQL 'vector' extension is active. MediaResearch table will be included.")
                 if vector_extension_exists:
-                    if MediaDetail not in default_models: # Add if not already part of BASE_MODELS
-                        default_models.append(MediaDetail)
+                    if MediaResearch not in default_models: # Add if not already part of BASE_MODELS
+                        default_models.append(MediaResearch)
             else:
-                self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaDetail table will NOT be included.")
-                if MediaDetail in default_models: # Remove if it was in BASE_MODELS and extension is not active
-                    default_models.remove(MediaDetail)
+                self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaResearch table will NOT be included.")
+                if MediaResearch in default_models: # Remove if it was in BASE_MODELS and extension is not active
+                    default_models.remove(MediaResearch)
         elif self.db_type == "sqlite":
             sqlite_vec_loaded_successfully = False 
             try:
@@ -166,9 +166,9 @@ class Database:
                                    "Ensure 'sqlite-vec' is correctly installed and accessible.", exc_info=True)
             
             if sqlite_vec_loaded_successfully:
-                if MediaDetail not in default_models: default_models.append(MediaDetail)
+                if MediaResearch not in default_models: default_models.append(MediaResearch)
             else:
-                if MediaDetail in default_models: default_models.remove(MediaDetail)
+                if MediaResearch in default_models: default_models.remove(MediaResearch)
 
         self.backup_service = BackupService(logger=self.logger, db_type=self.db_type, db_config=db_config_for_backup)
 
