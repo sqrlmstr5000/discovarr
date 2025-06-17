@@ -41,7 +41,7 @@ class LLMService:
         else:
             self.logger.info(f"Enabled LLM providers: {self.enabled_llm_provider_names}")
 
-    async def generate_suggestions(self, prompt: str, system_prompt: Optional[str], **kwargs) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    async def generate_suggestions(self, prompt: str, system_prompt: Optional[str], reference: Optional[str] = None, **kwargs) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Generates media suggestions using the first available and configured LLM provider.
         """
@@ -49,6 +49,7 @@ class LLMService:
             self.logger.warning("No LLM provider is enabled or configured to generate suggestions.")
             return {'success': False, 'message': "No LLM provider is enabled or configured.", 'status_code': 503}
 
+        provider_result = None
         for provider_name in self.enabled_llm_provider_names:
             self.logger.debug(f"Attempting to use LLM provider: {provider_name}")
             if provider_name == GeminiProvider.PROVIDER_NAME and self.gemini_provider:
@@ -59,7 +60,8 @@ class LLMService:
                     self.logger.error("Gemini is enabled, but its model is not configured. Trying next provider.")
                     continue
                 self.logger.info(f"Using Gemini provider (Model: {gemini_model}) for suggestions.")
-                return await self.gemini_provider.get_similar_media(
+
+                provider_result = await self.gemini_provider.get_similar_media(
                     prompt=prompt,
                     model=gemini_model,
                     system_prompt=system_prompt,
@@ -74,21 +76,29 @@ class LLMService:
                     self.logger.error("Ollama is enabled, but its model is not configured. Trying next provider.")
                     continue
                 self.logger.info(f"Using Ollama provider (Model: {ollama_model}) for suggestions.")
-                return await self.ollama_provider.get_similar_media(
+                provider_result = await self.ollama_provider.get_similar_media(
                     prompt=prompt,
                     model=ollama_model,
                     system_prompt=system_prompt,
                     temperature=ollama_temp,
                     **kwargs
                 )
-        
-        self.logger.error("All enabled LLM providers are misconfigured (e.g., missing model name). Cannot generate suggestions.")
-        return {'success': False, 'message': "Enabled LLM providers are misconfigured.", 'status_code': 500}
+
+            if provider_result:
+                token_counts = provider_result.get('token_counts')
+                if token_counts:
+                    self.db.add_search_stat(provider=provider_name, reference=reference, token_counts=token_counts)
+                    self.logger.debug(f"Stored token usage stats for {provider_name}/{reference}: {token_counts}")
+                return provider_result
+            else:
+                self.logger.error("All enabled LLM providers are misconfigured (e.g., missing model name). Cannot generate suggestions.")
+                return {'success': False, 'message': "Enabled LLM providers are misconfigured.", 'status_code': 500}
 
     async def generate_content(self,
                                prompt_data: Any,
                                response_format_details: Optional[Any] = None,
                                system_prompt: Optional[str] = None,
+                               reference: Optional[str] = None,
                                **kwargs: Any) -> Dict[str, Any]:
         """
         Generates content using the first available and configured LLM provider's
@@ -109,6 +119,7 @@ class LLMService:
             self.logger.warning("No LLM provider is enabled or configured to generate content.")
             return {'success': False, 'content': None, 'token_counts': None, 'message': "No LLM provider is enabled or configured."}
 
+        provider_result = None
         for provider_name in self.enabled_llm_provider_names:
             self.logger.debug(f"Attempting to use LLM provider for generic content generation: {provider_name}")
             if provider_name == GeminiProvider.PROVIDER_NAME and self.gemini_provider:
@@ -119,7 +130,7 @@ class LLMService:
                     self.logger.error("Gemini is enabled, but its model is not configured. Trying next provider.")
                     continue
                 self.logger.info(f"Using Gemini provider (Model: {gemini_model}) for generic content generation.")
-                return await self.gemini_provider._generate_content(model=gemini_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=gemini_temp, response_format_details=response_format_details, thinking_budget=kwargs.get('thinking_budget', gemini_tb), **kwargs)
+                provider_result = await self.gemini_provider._generate_content(model=gemini_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=gemini_temp, response_format_details=response_format_details, thinking_budget=kwargs.get('thinking_budget', gemini_tb), **kwargs)
             elif provider_name == OllamaProvider.PROVIDER_NAME and self.ollama_provider:
                 ollama_model = self.settings.get("ollama", "model")
                 ollama_temp = self.settings.get("ollama", "temperature")
@@ -128,10 +139,17 @@ class LLMService:
                     continue
                 self.logger.info(f"Using Ollama provider (Model: {ollama_model}) for generic content generation.")
                 # Note: For Ollama, system_prompt is typically part of prompt_data (list of messages)
-                return await self.ollama_provider._generate_content(model=ollama_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=ollama_temp, response_format_details=response_format_details, **kwargs)
+                provider_result = await self.ollama_provider._generate_content(model=ollama_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=ollama_temp, response_format_details=response_format_details, **kwargs)
         
-        self.logger.error("All enabled LLM providers are misconfigured (e.g., missing model name). Cannot generate content.")
-        return {'success': False, 'content': None, 'token_counts': None, 'message': "Enabled LLM providers are misconfigured."}
+            if provider_result:
+                token_counts = provider_result.get('token_counts')
+                if token_counts:
+                    self.db.add_search_stat(provider=provider_name, reference=reference, token_counts=token_counts)
+                    self.logger.debug(f"Stored token usage stats for {provider_name}/{reference}: {token_counts}")
+                return provider_result
+            else:
+                self.logger.error("All enabled LLM providers are misconfigured (e.g., missing model name). Cannot generate content.")
+                return {'success': False, 'content': None, 'token_counts': None, 'message': "Enabled LLM providers are misconfigured."}
 
     def get_prompt(self, limit: int, media_name: Optional[str] = None, template_string: Optional[str] = None) -> str:
         """
@@ -277,6 +295,7 @@ class LLMService:
         Renders a prompt string using Jinja2 templating.
 
         Args:
+            limit (int): The limit to be used in the template.
             media_name (str): The media name to be used in the template.
             template_string (str): The Jinja2 template string.
 
@@ -318,3 +337,37 @@ class LLMService:
             self.logger.warning("No LLM providers enabled or failed to fetch models from any enabled provider.")
         
         return all_models
+
+    async def generate_embedding(self, text_content: str, model: str, dimensions: Optional[int] = None) -> Optional[List[float]]:
+        """
+        Generates an embedding for the given text content using the first available
+        and configured LLM provider that supports embeddings.
+
+        Args:
+            text_content (str): The text content to embed.
+
+        Returns:
+            Optional[List[float]]: The embedding vector as a list of floats, or None on error or if no suitable provider is found.
+        """
+        if not self.enabled_llm_provider_names:
+            self.logger.warning("No LLM provider is enabled or configured to generate embeddings.")
+            return None
+
+        for provider_name in self.enabled_llm_provider_names:
+            self.logger.debug(f"Attempting to use LLM provider for embedding generation: {provider_name}")
+            
+            if provider_name == GeminiProvider.PROVIDER_NAME and self.gemini_provider:
+                self.logger.info(f"Using Gemini provider for embedding generation.")
+                # GeminiProvider.get_embedding uses a hardcoded model, so no model param needed here.
+                return await self.gemini_provider.get_embedding(text_content=text_content, model=model, dimensions=dimensions)
+            
+            elif provider_name == OllamaProvider.PROVIDER_NAME and self.ollama_provider:
+                if not model:
+                    self.logger.warning(f"Ollama is enabled, but 'embedding_model' is not configured in settings. Trying next provider.")
+                    continue # Try next provider
+                
+                self.logger.info(f"Using Ollama provider (Model: {model}) for embedding generation.")
+                return await self.ollama_provider.get_embedding(text_content=text_content, model=model, dimensions=dimensions)
+
+        self.logger.error("No enabled and configured LLM provider found that supports embedding generation with the current settings.")
+        return None

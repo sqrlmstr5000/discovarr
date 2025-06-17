@@ -7,7 +7,7 @@ from peewee import PeeweeException, PostgresqlDatabase
 from services.database import Database
 from services.models import Settings, database as db_proxy, MODELS, Media, MediaResearch
 from services.settings import SettingsService
-from services.researcharr import ResearcharrService
+from services.research import ResearchService
 
 # Configure basic logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -134,7 +134,7 @@ def test_postgres_settings_initialization(postgres_db_setup):
 
 def test_postgres_create_embedding_and_insert_into_media_research(postgres_db_setup, caplog):
     """
-    Tests creating an embedding with ResearcharrService and inserting it into MediaResearch
+    Tests creating an embedding with ResearchService and inserting it into MediaResearch
     when using PostgreSQL with the 'vector' extension.
     """
     db_instance = postgres_db_setup
@@ -153,7 +153,7 @@ def test_postgres_create_embedding_and_insert_into_media_research(postgres_db_se
     assert MediaResearch._meta.table_name in tables, \
         f"{MediaResearch._meta.table_name} table not found. Tables: {tables}"
 
-    research_service = ResearcharrService() # Uses default model
+    research_service = ResearchService() # Uses default model
     assert research_service.model is not None, "SentenceTransformer model failed to load."
 
     # 1. Create a dummy Media record
@@ -169,7 +169,7 @@ def test_postgres_create_embedding_and_insert_into_media_research(postgres_db_se
 
     # 2. Create embedding
     sample_text = "This is a test plot summary for a PostgreSQL vector test."
-    embedding = research_service.create_embedding(sample_text)
+    embedding = research_service.get_research_embedding(sample_text)
     assert embedding is not None, "Failed to create embedding."
     assert isinstance(embedding, list) and len(embedding) > 0
 

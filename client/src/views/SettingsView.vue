@@ -641,7 +641,7 @@ onMounted(async () => { // Make onMounted async
                     </div>
                   </div>  
                   <!-- Textarea for specific settings like system_prompt -->
-                  <div v-else-if="groupName === 'app' && (settingName === 'system_prompt')">
+                  <div v-else-if="groupName === 'app' && (settingName === 'system_prompt' || settingName === 'default_research_prompt')">
                     <textarea
                       :id="groupName + '-' + settingName"
                       v-model="settingDetails.value"
@@ -816,7 +816,7 @@ onMounted(async () => { // Make onMounted async
                   </label>
 
                   <!-- Gemini Model Dropdown -->
-                  <template v-if="groupName === 'gemini' && settingName === 'model'">
+                  <template v-if="groupName === 'gemini' && (settingName === 'model' || settingName === 'embedding_model')">
                     <select
                       :id="groupName + '-' + settingName"
                       v-model="settingDetails.value"

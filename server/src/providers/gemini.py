@@ -54,15 +54,15 @@ class GeminiProvider(LLMProviderBase):
         config_params = {
             "system_instruction": system_prompt,
             "temperature": temperature,
-            "response_mime_type": "application/json", # Assuming JSON for structured output
         }
         if response_format_details: # This should be a Pydantic model for Gemini
+            config_params["response_mime_type"] = "application/json"
             config_params["response_schema"] = response_format_details
 
         thinking_config_param = None
         thinking_budget_kwarg = kwargs.get('thinking_budget')
         # Check if model supports thinking_config (e.g., 1.5 series)
-        if "1.5-pro" in model or "1.5-flash" in model: # Adjusted model check
+        if "2.5-pro" in model or "2.5-flash" in model: # Adjusted model check
             if thinking_budget_kwarg is not None:
                 try:
                     tb_float = float(thinking_budget_kwarg)
@@ -83,7 +83,10 @@ class GeminiProvider(LLMProviderBase):
                 contents=prompt_data, # 'contents' takes the string prompt
                 config=types.GenerateContentConfig(**config_params)
             )
-            content = json.loads(response.text) # Parsed content based on response_schema
+            if response_format_details: # This should be a Pydantic model for Gemini
+                content = json.loads(response.text) # Parsed content based on response_schema
+            else:
+                content = response.text # Return raw text if no schema is provided
 
             usage_meta = response.usage_metadata
             token_counts = {
@@ -145,6 +148,38 @@ class GeminiProvider(LLMProviderBase):
             'token_counts': generation_result['token_counts']
         }
 
+    async def get_embedding(self, text_content: str, model: str, dimensions: Optional[int] = None) -> Optional[List[float]]:
+        """
+        Generates an embedding for the given text content using a specific Gemini embedding model.
+
+        Args:
+            text_content (str): The text content to embed.
+
+        Returns:
+            Optional[List[float]]: The embedding vector as a list of floats, or None on error.
+        """
+        if not self.client:
+            self.logger.error("Gemini client is not initialized. Cannot get embedding.")
+            return None
+        if not text_content:
+            self.logger.warning("No text content provided for embedding.")
+            return None
+
+        embedding_model = model # Or "models/text-embedding-004" / "models/text-embedding-preview-0409"
+        # The model "gemini-embedding-exp-03-07" seems experimental or internal.
+        # Using a generally available embedding model like "models/embedding-001".
+        # Refer to https://ai.google.dev/gemini-api/docs/models/gemini for current embedding models.
+
+        try:
+            self.logger.debug(f"Requesting embedding for text using model: {embedding_model}")
+            result = await self.client.aio.models.embed_content(model=embedding_model, 
+                                                                contents=text_content,
+                                                                config={'output_dimensionality': dimensions},)
+            return result.embeddings[0].values
+        except Exception as e:
+            self.logger.error(f"Error generating embedding with Gemini model {embedding_model}: {e}", exc_info=True)
+            return None
+
     async def get_models(self) -> Optional[List[str]]:
         """
         Lists available Gemini and Gemma model names, with "models/" prefix removed.
@@ -185,9 +220,11 @@ class GeminiProvider(LLMProviderBase):
         return {
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Gemini integration."},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "Gemini API key", "required": True},
-            "model": {"value": "gemini-1.5-flash-latest", "type": SettingType.STRING, "description": "Gemini model name (e.g., gemini-1.5-flash-latest, gemini-1.5-pro-latest)."},
+            "model": {"value": "gemini-2.5-flash-preview-05-20", "type": SettingType.STRING, "description": "Gemini model name (e.g., gemini-1.5-flash-latest, gemini-1.5-pro-latest)."},
             "thinking_budget": {"value": 1024.0, "type": SettingType.FLOAT, "description": "Gemini thinking budget (0 to disable, min 1024 if enabled, max 24576)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Values typically range from 0.0 to 2.0."},
+            "embedding_model": {"value": "gemini-embedding-001", "type": SettingType.STRING, "description": "Gemini model name to use for embeddings https://cloud.google.com/vertex-ai/generative-ai/docs/embeddings/get-text-embeddings"},
+            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "description": "Number of dimensions for Gemini embeddings (max: 3072). Higher dimensions may improve quality but increase cost and storage requirements."},
             "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }
 

@@ -70,7 +70,11 @@ class OllamaProvider(LLMProviderBase):
                 options=options if options else None
             )
 
-            content = json.loads(response['message']['content'])
+            if response_format_details:
+                content = json.loads(response['message']['content'])
+            else:
+                content = response['message']['content']
+                
             token_counts = {
                 'prompt_token_count': response.get('prompt_eval_count', 0),
                 'candidates_token_count': response.get('eval_count', 0),
@@ -151,6 +155,37 @@ class OllamaProvider(LLMProviderBase):
             self.logger.exception(f"Error listing Ollama models: {e}")
             return None
 
+    async def get_embedding(self, text_content: str, model: Optional[str] = None, dimensions: Optional[int] = None) -> Optional[List[float]]:
+        """
+        Generates an embedding for the given text content using the specified Ollama model.
+
+        Args:
+            text_content (str): The text content to embed.
+            model (Optional[str]): The Ollama model to use for embeddings.
+                                   If None, a default or configured model might be used
+                                   (though current Ollama client requires it).
+
+        Returns:
+            Optional[List[float]]: The embedding vector as a list of floats, or None on error.
+        """
+        if not self.client:
+            self.logger.error("Ollama client is not initialized. Cannot get embedding.")
+            return None
+        if not text_content:
+            self.logger.warning("No text content provided for embedding.")
+            return None
+        if not model: # Ollama's client.embeddings requires a model
+            self.logger.error("Ollama model name must be provided for generating embeddings.")
+            return None
+
+        try:
+            self.logger.debug(f"Requesting embedding for text using Ollama model: {model}")
+            response = await self.client.embeddings(model=model, prompt=text_content)
+            return response.get('embedding')
+        except Exception as e:
+            self.logger.error(f"Error generating embedding with Ollama model {model}: {e}", exc_info=True)
+            return None
+        
     @classmethod
     def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
         """
@@ -162,5 +197,7 @@ class OllamaProvider(LLMProviderBase):
             "base_url": {"value": "http://ollama:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434).", "required": True},
             "model": {"value": "llama3", "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
+            "embedding_model": {"value": "nomic-embed-text", "type": SettingType.STRING, "description": "Ollama model name to use for embeddings (e.g., nomic-embed-text, mxbai-embed-large). Leave blank to disable Ollama embeddings."},
+            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "description": "Number of dimensions for model embeddings. The size is determined by the model used, e.g., 768 for nomic-embed-text. https://github.com/ollama/ollama/issues/651"},
             "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }

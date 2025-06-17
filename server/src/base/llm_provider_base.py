@@ -81,6 +81,19 @@ class LLMProviderBase(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_embedding(self, text_content: str, model: Optional[str] = None, dimensions: Optional[int] = None) -> Optional[List[float]]:
+        """
+        Generates an embedding for the given text using the LLM provider's embedding model.
+
+        Args:
+            text_content (str): The text to embed.
+
+        Returns:
+            Optional[List[float]]: A list of floats representing the embedding, or None on error.
+        """
+        pass
+
     @classmethod
     @abstractmethod
     def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:

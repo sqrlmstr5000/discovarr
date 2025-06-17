@@ -9,7 +9,7 @@ from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalErro
 import sqlite_vec
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, SearchStat, Schedule, Settings, Migrations, MediaResearch
+from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, LLMStat, Schedule, Settings, Migrations, MediaResearch
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -626,11 +626,12 @@ class Database:
             self.logger.error(f"Error searching media: {e}")
             return []
 
-    def add_search_stat(self, search_id: int, token_counts: Dict[str, int]) -> Optional[int]:
+    def add_search_stat(self, provider: str, reference: str, token_counts: Dict[str, int]) -> Optional[int]:
         """Add a search stats entry."""
         try:
-            stat = SearchStat.create(
-                search_id=search_id,
+            stat = LLMStat.create(
+                source_provider=provider,
+                reference=reference,
                 prompt_token_count=token_counts.get('prompt_token_count') or 0,
                 candidates_token_count=token_counts.get('candidates_token_count') or 0,
                 thoughts_token_count=token_counts.get('thoughts_token_count') or 0,
@@ -644,9 +645,9 @@ class Database:
     def get_search_stats(self, search_id: Optional[int] = 0, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Get search stats, either for a specific search or all searches."""
         try:
-            query = (SearchStat
+            query = (LLMStat
                     .select()
-                    .order_by(SearchStat.created_at.desc()))
+                    .order_by(LLMStat.created_at.desc()))
             
             return [model_to_dict(stat) for stat in query]
         except Exception as e:
@@ -777,11 +778,11 @@ class Database:
             self.logger.debug(f"Executing query to get searches with schedules: {query.sql()}")
             
             results = []
-            for search_instance in query:
-                search_dict = model_to_dict(search_instance, recurse=False)
-                self.logger.debug(f"search_instance: {search_instance}")
-                if hasattr(search_instance, 'schedule') and search_instance.schedule.id is not None: # Check if schedule.id is not None to ensure it's a real schedule
-                    schedule_dict = model_to_dict(search_instance.schedule, recurse=False)
+            for instance in query:
+                search_dict = model_to_dict(instance, recurse=False)
+                self.logger.debug(f"instance: {instance}")
+                if hasattr(instance, 'schedule') and instance.schedule.id is not None: # Check if schedule.id is not None to ensure it's a real schedule
+                    schedule_dict = model_to_dict(instance.schedule, recurse=False)
                     search_dict["schedule"] = schedule_dict
                 results.append(search_dict) 
             return results
@@ -959,6 +960,44 @@ class Database:
             self.logger.error(f"Error listing schedules: {e}")
             return []
 
+    def get_all_research(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all research data entries from the database, including the associated media title.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries representing the MediaResearch entries,
+                                  each including 'id', 'media_id', 'media_title', 'research',
+                                  'created_at', and 'updated_at'. Returns an empty list on error.
+        """
+        try:
+            query = (MediaResearch
+                     .select(MediaResearch, Media) # Select all from MediaResearch and alias Media.title
+                     .join(Media,
+                           join_type=JOIN.LEFT_OUTER,
+                           on=(MediaResearch.media == Media.id))) # Correct join condition using MediaResearch.media
+            
+            results = []
+            for entry in query: # entry is a MediaResearch instance
+                entry_dict = model_to_dict(entry, recurse=False, exclude=[MediaResearch.embedding]) # Exclude embedding
+
+                # The 'media' key from MediaResearch.media (FK object) needs to be 'media_id' (the actual ID value)
+                # for the Pydantic MediaResearchResponse model. model_to_dict(entry) gives the ID value for FKs.
+                if 'media' in entry_dict:
+                    entry_dict['media_id'] = entry_dict.pop('media')
+                else: # Should not happen if MediaResearch.media is a valid field
+                    entry_dict['media_id'] = None
+
+                # Map the 'title' field from MediaResearch model to 'media_title' for the response
+                if 'title' in entry_dict:
+                    entry_dict['media_title'] = entry_dict.pop('title')
+                else: # Should not happen as MediaResearch.title is not nullable
+                    entry_dict['media_title'] = None
+                results.append(entry_dict)
+            return results
+        except Exception as e:
+            self.logger.error(f"Error retrieving all research entries: {e}", exc_info=True)
+            return []
+        
     def get_setting(self, name: str) -> Optional[Dict[str, Any]]:
         """Get a setting by name."""
         try:

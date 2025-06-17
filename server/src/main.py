@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from typing import Optional, Union, Dict, Any 
+from typing import Optional, Union, Dict, Any, List
 from fastapi.responses import FileResponse
 from discovarr import Discovarr
 from pydantic import BaseModel
@@ -44,76 +44,14 @@ LOGGING_CONFIG = {
             'handlers': ['default'],
             'level': loglevel,
         },
-        'main': {  
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'discovarr': {  # Renamed from discovarr
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'gemini': { 
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'jellyfin': {  
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'sonarr': {  
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'radarr': {  
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'tmdb': { 
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'database': { 
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'settings': { 
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'migration': { 
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'fastapi': {
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'uvicorn': {
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'apscheduler': {
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
-        'traktprovider': {
-            'handlers': ['default'],
-            'level': loglevel,
-            'propagate': False
-        },
+        # Specific loggers can be added here if they need a different level
+        # or different handlers than the root logger.
+        # For example, to set 'apscheduler' to WARNING level:
+        # 'apscheduler': {
+        # 'handlers': ['default'],
+        # 'level': 'WARNING',
+        # 'propagate': False, # Or True, depending on desired behavior
+        # },
     },
 }
 
@@ -197,6 +135,15 @@ class JobTriggerResponse(BaseModel):
     success: bool
     message: str
 
+class MediaResearchResponse(BaseModel):
+    """Response model for a MediaResearch entry."""
+    id: int # Primary key of MediaResearch
+    media_id: Optional[int] = None # The media_id (PK of Media table)
+    research: str
+    media_title: Optional[str] = None # Add media_title for display
+    #created_at: datetime
+    #updated_at: datetime
+
 class PromptPreviewRequest(BaseModel):
     limit: int
     media_name: Optional[str] = None
@@ -208,7 +155,7 @@ class ResearchPromptPreviewRequest(BaseModel):
 
 class ResearchRequest(BaseModel):
     media_name: str
-    media_id: int
+    media_id: Optional[int] = None
     prompt: Optional[str] = None # This will be the template_string
 
 class MediaSearchResultItem(BaseModel):
@@ -485,7 +432,7 @@ async def research_media_endpoint(
     """
     logger.info(f"Received research request for media: '{request.media_name}' (ID: {request.media_id})")
     try:
-        result = await discovarr.get_research(media_name=request.media_name, media_id=request.media_id)
+        result = await discovarr.generate_research(media_name=request.media_name, media_id=request.media_id, template_string=request.prompt)
         
         if not result.get("success"):
             status_code = result.get("status_code", 500) # Default to 500 if not specified
@@ -500,6 +447,23 @@ async def research_media_endpoint(
     except Exception as e:
         logger.error(f"Unexpected error processing research request for '{request.media_name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+    
+@api_app.get("/research", response_model=List[MediaResearchResponse])
+async def get_research_endpoint(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to retrieve all existing research data entries.
+    """
+    logger.info("Received request to get all research entries.")
+    try:
+        research_data = discovarr.get_all_research()
+        return research_data # This is already a list of dictionaries
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving research: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while retrieving research: {str(e)}")
     
 @api_app.post("/research/prompt/preview")
 async def preview_research_prompt_endpoint(

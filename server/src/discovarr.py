@@ -20,7 +20,7 @@ from services.settings import SettingsService
 from services.response import APIResponse
 from services.image_cache import ImageCacheService 
 from services.llm import LLMService # Import the new LLMService
-from services.researcharr import ResearcharrService # Import ResearcharrService
+from services.research import ResearchService # Import ResearchService
 from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
@@ -107,7 +107,7 @@ class Discovarr:
         self.trakt = None # Initialize Trakt service instance
         self.llm_service = None # Initialize LLMService instance
         self.tmdb = None
-        self.researcharr_service = None # Initialize ResearcharrService instance
+        self.research_service = None # Initialize ResearchService instance
 
         self.db_path = db_path
         self.image_cache = ImageCacheService() # Initialize ImageCacheService
@@ -296,11 +296,11 @@ class Discovarr:
             plex_provider=self.plex,
             trakt_provider=self.trakt
         )
-        # Initialize ResearcharrService
-        self.researcharr_service = ResearcharrService(
+        # Initialize ResearchService
+        self.research_service = ResearchService(
             settings_service=self.settings,
-            llm_service=self.llm_service
-            # model_name for embeddings can be made configurable if needed
+            llm_service=self.llm_service,
+            db_service=self.db
         )
         self.logger.info("Discovarr configuration processed and services (re)initialized.")
 
@@ -378,9 +378,21 @@ class Discovarr:
             self.logger.error("LLMService is not initialized.")
             return {'success': False, 'message': "LLMService not initialized.", 'status_code': 500}
 
+        ref = None
+        if search_id:
+            ref = {
+                "method": "search",
+                "search_id": search_id
+            }
+        else:
+            ref = {
+                "method": "search",
+                "media_name": media_name
+            }
         provider_result = await self.llm_service.generate_suggestions(
             prompt=prompt,
-            system_prompt=self.system_prompt
+            system_prompt=self.system_prompt,
+            reference=json.dumps(ref)
             # kwargs for specific providers can be passed here if LLMService is adapted
             # For now, temperature and thinking_budget are handled within LLMService via settings
         )
@@ -396,17 +408,12 @@ class Discovarr:
 
         # If successful, provider_result contains 'response' and 'token_counts'
         llm_api_response_content = provider_result.get('response')
-        token_counts = provider_result.get('token_counts')
 
         if not llm_api_response_content or not isinstance(llm_api_response_content.get("suggestions"), list):
             self.logger.error(f"LLM provider response content is missing 'suggestions' list or is malformed.")
             self.logger.debug(f"LLM Response Content: {llm_api_response_content}")
             return {'success': False, 'message': "LLM response malformed or missing suggestions.", 'status_code': 500}
 
-        if token_counts and search_id:
-            self.db.add_search_stat(search_id, token_counts)
-            self.logger.debug(f"Stored token usage stats for search {search_id}: {token_counts}")
-        # model_provider_name and model_to_log are not directly available here anymore, LLMService logs them.
         self.logger.info(f"Similar Media: {json.dumps(llm_api_response_content, indent=2)}")
         
         suggestions_from_llm = llm_api_response_content.get("suggestions", [])
@@ -546,10 +553,10 @@ class Discovarr:
         # favorites, and watch history internally.
         return self.llm_service.get_research_prompt(media_name=media_name, template_string=template_string)
     
-    async def get_research(self, media_name: str, media_id: int) -> Dict[str, Any]:
+    async def generate_research(self, media_name: str, media_id: Optional[int] = None, template_string: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generates research content for a given media item using ResearcharrService.
-        The ResearcharrService internally uses settings.app.default_research_prompt.
+        Generates research content for a given media item using ResearchService.
+        The ResearchService internally uses settings.app.default_research_prompt.
 
         Args:
             media_name (str): The name of the media to research.
@@ -559,16 +566,47 @@ class Discovarr:
             Dict[str, Any]: A dictionary indicating success or failure,
                             and potentially the created research entry ID and text.
         """
-        if not self.researcharr_service:
-            self.logger.error("ResearcharrService is not initialized. Cannot get research.")
-            return {"success": False, "message": "ResearcharrService not available."}
+        if not self.research_service:
+            self.logger.error("ResearchService is not initialized. Cannot get research.")
+            return {"success": False, "message": "ResearchService not available."}
         
-        if not media_name or media_id is None: # Basic validation
-            self.logger.error("Media name and media ID are required for research.")
-            return {"success": False, "message": "Media name and media ID are required."}
+        if media_name is None: # Basic validation
+            self.logger.error("Media name is required for research.")
+            return {"success": False, "message": "Media name is required."}
 
-        return await self.researcharr_service.get_research(media_name=media_name, media_id=media_id)
+        return await self.research_service.generate_research(media_name=media_name, media_id=media_id, template_string=template_string)
 
+    def get_all_research(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all research data entries from the database.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries representing the MediaResearch entries,
+                                  including associated media title. Returns an empty list on error.
+        """
+        self.logger.info("Retrieving all research entries.")
+        try:
+            return self.db.get_all_research()
+        except Exception as e:
+            self.logger.error(f"Error retrieving all research entries: {e}", exc_info=True)
+            return [] # Return empty list on error
+        
+    def get_research_by_media_id(self, media_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves research data for a specific media item by its Media ID from the database.
+
+        Args:
+            media_id (int): The ID of the Media record.
+
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary representing the MediaResearch entry, or None if not found.
+        """
+        self.logger.info(f"Retrieving research for media ID: {media_id}")
+        try:
+            return self.db.get_research_by_media_id(media_id)
+        except Exception as e:
+            self.logger.error(f"Error retrieving research for media ID {media_id}: {e}", exc_info=True)
+            return None
     def search_media(self, query: str) -> List[Dict[str, Any]]:
         """
         Searches for media in the database based on a query string.

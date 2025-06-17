@@ -6,7 +6,7 @@ from pathlib import Path
 # Assuming 'server/src' is in PYTHONPATH or tests are run such that 'src' is discoverable
 from services.database import Database, database as db_proxy
 from services.models import Media, MediaResearch
-from services.researcharr import ResearcharrService
+from services.research import ResearchService
 
 @pytest.fixture
 def temp_db_path(tmp_path: Path) -> Path:
@@ -54,7 +54,7 @@ def test_sqlite_vec_loads_successfully_and_media_detail_table_created(temp_db_pa
 
 def test_create_embedding_and_insert_into_media_detail(temp_db_path: Path, caplog):
     """
-    Tests creating an embedding with ResearcharrService and inserting it into MediaResearch.
+    Tests creating an embedding with ResearchService and inserting it into MediaResearch.
     """
     # Ensure any previous db instance is cleared from proxy and closed
     if db_proxy.obj is not None:
@@ -68,7 +68,7 @@ def test_create_embedding_and_insert_into_media_detail(temp_db_path: Path, caplo
     caplog.set_level(logging.INFO)
 
     db_service = Database(db_path=str(temp_db_path))
-    research_service = ResearcharrService() # Uses default model
+    research_service = ResearchService() # Uses default model
 
     assert research_service.model is not None, "SentenceTransformer model failed to load."
 
@@ -84,7 +84,7 @@ def test_create_embedding_and_insert_into_media_detail(temp_db_path: Path, caplo
 
     # 2. Create embedding
     sample_text = "This is a test plot summary for a fantastic movie."
-    embedding = research_service.create_embedding(sample_text)
+    embedding = research_service.get_research_embedding(sample_text)
     assert embedding is not None, "Failed to create embedding."
     assert isinstance(embedding, list)
     assert len(embedding) > 0 # Ensure embedding is not empty
