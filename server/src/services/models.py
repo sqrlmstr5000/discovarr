@@ -42,7 +42,7 @@ class Search(PeeweeBaseModel):
     created_at = DateTimeField(default=datetime.now)
 
 class SearchStat(PeeweeBaseModel):
-    search = ForeignKeyField(Search, backref='stats', on_delete='CASCADE', null=True)
+    search = ForeignKeyField(Search, backref='search', on_delete='CASCADE', null=True)
     prompt_token_count = IntegerField(default=0)
     candidates_token_count = IntegerField(default=0)
     thoughts_token_count = IntegerField(default=0)
@@ -51,6 +51,8 @@ class SearchStat(PeeweeBaseModel):
 
 class Media(PeeweeBaseModel):
     title = CharField(null=False)
+    entity_type = CharField(null=False) # e.g., 'suggestion', 'library'
+    source_provider = CharField(null=True)
     source_title = CharField(null=True)
     description = TextField(null=True)
     similarity = TextField(null=True)
@@ -66,33 +68,32 @@ class Media(PeeweeBaseModel):
     genres = TextField(null=True) 
     original_language = CharField(null=True) # e.g., 'en', 'ja'
     ignore = BooleanField(default=False)
-    search = ForeignKeyField(Search, backref='media', null=True)
+    search = ForeignKeyField(Search, backref='search', null=True)
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
+    favorite = BooleanField(default=False)
+    # Watch history fields
+    watched = BooleanField(default=False)
+    watch_count = IntegerField(default=0)
 
 class MediaResearch(PeeweeBaseModel):
-    media = ForeignKeyField(Media, backref='detail', unique=True, on_delete='CASCADE') # One-to-one relationship
+    media = ForeignKeyField(Media, backref='media', unique=True, on_delete='CASCADE') # One-to-one relationship
     research = TextField(null=False) # To store research notes or extended details
     embedding = VectorField(dimensions=768) # Default for multi-qa-mpnet-base-cos-v1 https://www.sbert.net/docs/sentence_transformer/pretrained_models.html#semantic-search-models
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
 class WatchHistory(PeeweeBaseModel):
-    title = CharField(null=False)
-    media_id = CharField(null=True)
-    media_type = CharField(null=False)
+    media = ForeignKeyField(Media, backref='media', on_delete='CASCADE') # One Media to Many WatchHistory entries
     watched_by = CharField(null=False)
     last_played_date = DateTimeField(null=False)
-    source = CharField(null=False)
-    poster_url = CharField(null=True)
-    poster_url_source = CharField(null=True)
     processed = BooleanField(default=False)
     processed_at = DateTimeField(null=True)
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
 class Schedule(PeeweeBaseModel):
-    search = ForeignKeyField(Search, backref='schedules', null=True)
+    search = ForeignKeyField(Search, backref='search', null=True)
     job_id = TextField(unique=True)
     func_name = TextField()
     year = CharField(null=True)
@@ -121,11 +122,11 @@ MODELS = [Media, WatchHistory, Search, SearchStat, Schedule, Migrations, Setting
 class ItemsFiltered(BaseModel):
     """Represents a filtered recently watched media item."""
     name: str
-    id: Optional[str]
+    id: Optional[str] # Assumes this is the TMDB ID
     type: Optional[str] # 'movie' or 'tv'
     last_played_date: Optional[str] # ISO 8601 str
     play_count: Optional[int] = None  
-    is_favorite: Optional[bool] = None  
+    is_favorite: Optional[bool] = False  
     poster_url: Optional[str] = None
     
 class LibraryUser(BaseModel):

@@ -9,7 +9,8 @@ from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Union
 import asyncio 
 import aiohttp # For async HTTP requests in the caching task
-from services.models import ItemsFiltered, LibraryUser # Import LibraryUser
+from peewee import fn
+from services.models import ItemsFiltered, LibraryUser, Media # Import Media model
 from services.radarr import Radarr # Keep Radarr import
 from services.sonarr import Sonarr
 from services.tmdb import TMDB
@@ -288,9 +289,12 @@ class Discovarr:
             logger=self.logger,
             settings_service=self.settings,
             db_service=self.db, # Pass the database instance
-            enabled_llm_provider_names=self.enabled_providers.get("llm", []),
+            enabled_providers=self.enabled_providers,
             gemini_provider=self.gemini,
-            ollama_provider=self.ollama
+            ollama_provider=self.ollama,
+            jellyfin_provider=self.jellyfin,
+            plex_provider=self.plex,
+            trakt_provider=self.trakt
         )
         # Initialize ResearcharrService
         self.researcharr_service = ResearcharrService(
@@ -455,6 +459,7 @@ class Discovarr:
                     # Create new media entry if it doesn't exist
                     media_data = {
                         "title": title,
+                        "entity_type": "suggestion", 
                         "source_title": media_name,
                         "description": media.get("description"),
                         "similarity": media.get("similarity"),
@@ -582,7 +587,8 @@ class Discovarr:
         for item in db_results:
             formatted_results.append({
                 "title": item.get("title"),
-                "media_id": item.get("tmdb_id"), # Assuming media_id corresponds to tmdb_id
+                "media_id": item.get("id"),      # This is the Media table Primary Key
+                "tmdb_id": item.get("tmdb_id"),  # Explicitly include tmdb_id
                 "media_type": item.get("media_type")
             })
         return formatted_results
@@ -670,42 +676,96 @@ class Discovarr:
         # Ensure unique_items is indeed a list of ItemsFiltered
         if not all(isinstance(item, ItemsFiltered) for item in unique_items):
             self.logger.error(f"Received items for {source} are not all ItemsFiltered. Aborting DB sync for this batch.")
-            return [] # Return empty list if type check fails
+            return []
 
         if unique_items: # unique_items is List[ItemsFiltered]
             for item in unique_items: # item is ItemsFiltered
                 if not isinstance(item, ItemsFiltered): # Defensive check
                     self.logger.warning(f"Skipping item due to unexpected type in unique_items for {source}: {type(item)}")
                     continue
+                if not item.id or not item.type or not item.name:
+                    self.logger.warning(f"Skipping item from {source} due to missing id, type, or name: {item}")
+                    continue
                 
-                url_to_cache = item.poster_url
+                # Find or create Media record
+                media_instance = Media.get_or_none((fn.Lower(Media.title) == item.name.lower()) & (Media.media_type == item.type))
+                newly_created_media = False
 
-                # If poster_url is None, try to fetch it from TMDB. Used for Trakt, Jellyfin and Plex provide the poster_url directly.
-                if not url_to_cache and item.id and item.type and self.tmdb:
-                    self.logger.info(f"Poster URL is missing for {source} item '{item.name}' (ID: {item.id}). Attempting TMDB lookup.")
-                    tmdb_details = self.tmdb.get_media_detail(tmdb_id=item.id, media_type=item.type)
-                    if tmdb_details and tmdb_details.get("poster_path"):
-                        poster_path = tmdb_details.get("poster_path")
-                        url_to_cache = f"https://image.tmdb.org/t/p/w500{poster_path}"
-                        self.logger.info(f"Found poster URL from TMDB for '{item.name}': {url_to_cache}")
+                if not media_instance:
+                    self.logger.info(f"Media '{item.name}', type: ({item.type}) not found in DB. Creating new entry from {source} watch history.")
+                    tmdb_details = self.tmdb.get_media_detail(item.id, item.type) if self.tmdb else None
+                    
+                    poster_url_source_val = item.poster_url # Use poster from provider if available
+                    cached_poster_path = None
+
+                    if not poster_url_source_val and tmdb_details and tmdb_details.get("poster_path"):
+                        poster_url_source_val = f"https://image.tmdb.org/t/p/w500{tmdb_details.get('poster_path')}"
+                    
+                    if poster_url_source_val:
+                         cached_poster_path = await self._cache_image_if_needed(poster_url_source_val, source, item.id)
+                    
+                    network_names = []
+                    genre_names = []
+                    release_date_val = None
+                    original_language_val = None
+                    description_val = None
+                    media_status_val = None
+
+                    if tmdb_details:
+                        description_val = tmdb_details.get("overview")
+                        media_status_val = tmdb_details.get("status")
+                        original_language_val = tmdb_details.get("original_language")
+                        release_date_val = tmdb_details.get("release_date") if item.type == "movie" else tmdb_details.get("last_air_date")
+                        if item.type == "tv" and tmdb_details.get("networks"):
+                            network_names = [net.get("name") for net in tmdb_details.get("networks", []) if net.get("name")]
+                        if tmdb_details.get("genres"):
+                            genre_names = [g.get("name") for g in tmdb_details.get("genres", [])]
+
+                    media_data_for_creation = {
+                        "title": item.name,
+                        "tmdb_id": item.id,
+                        "media_type": item.type,
+                        "entity_type": "library", 
+                        "source_provider": source,
+                        "source_title": None, 
+                        "description": description_val,
+                        "poster_url": cached_poster_path,
+                        "poster_url_source": poster_url_source_val,
+                        "release_date": release_date_val,
+                        "networks": ", ".join(network_names) if network_names else None,
+                        "genres": ", ".join(genre_names) if genre_names else None,
+                        "original_language": original_language_val,
+                        "media_status": media_status_val,
+                        "watched": True,
+                        "favorite": item.is_favorite,
+                        "watch_count": 1,
+                        "ignore": False 
+                    }
+                    media_pk = self.db.create_media(media_data_for_creation)
+                    if media_pk:
+                        media_instance = Media.get_by_id(media_pk)
+                        newly_created_media = True
                     else:
-                        self.logger.warning(f"Could not find poster URL from TMDB for '{item.name}' (ID: {item.id}).")
+                        self.logger.error(f"Failed to create Media entry for '{item.name}'. Skipping WatchHistory add.")
+                        continue 
                 
-                final_poster_url = None 
-                # Cache the poster image (if a URL exists) and get the local/cached path
-                if url_to_cache and item.id: # Ensure we have a URL and an ID for caching
-                    final_poster_url = await self._cache_image_if_needed(url_to_cache, source, item.id)
-
-                self.db.add_watch_history(
-                    title=item.name,
-                    media_id=item.id,
-                    media_type=item.type,
-                    watched_by=user_name,
-                    last_played_date=item.last_played_date,
-                    poster_url=final_poster_url,
-                    poster_url_source=url_to_cache,
-                    source=source,
-                )
+                if media_instance:
+                    add_history_success = self.db.add_watch_history(
+                        media_id=media_instance.id, 
+                        watched_by=user_name, 
+                        last_played_date_iso=item.last_played_date
+                    )
+                    if add_history_success:
+                        self.logger.info(f"Successfully added/updated WatchHistory for '{media_instance.title}' by {user_name}.")
+                        watch_count = (media_instance.watch_count or 0) + 1
+                        self.logger.info(f"Updating media instance '{media_instance.title}' with watch count: {watch_count} and watched status (True).")
+                        if not newly_created_media: 
+                            media_instance.watch_count = watch_count
+                            media_instance.watched = True
+                            media_instance.updated_at = datetime.now()
+                            media_instance.save()
+                    else:
+                        self.logger.error(f"Skipped add/update WatchHistory for '{media_instance.title}' by {user_name}.")
                 
             self.logger.info(f"Synced and added/updated {len(unique_items)} unique recently watched title(s) for {user_name} from {source}.")
             return unique_items
@@ -738,7 +798,8 @@ class Discovarr:
                     # Ensure user is in the results dict, even if no items are found later
                     all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
 
-                    history_count = self.db.get_watch_history_count_for_source("jellyfin")
+                    # TODO: Fix to check media table instead
+                    history_count = self.db.get_media_count_for_provider("jellyfin")
                     limit_for_provider = None 
                     if history_count == 0:
                         self.logger.debug(f"Jellfin watch history count={history_count}, syncing all history.")
@@ -774,7 +835,8 @@ class Discovarr:
                     # Ensure user is in the results dict, even if no items are found later
                     all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
 
-                    history_count = self.db.get_watch_history_count_for_source("plex")
+                    # TODO: Fix to check media table instead
+                    history_count = self.db.get_media_count_for_provider("plex")
                     limit_for_provider = None 
                     if history_count == 0:
                         self.logger.debug(f"Plex watch history count={history_count}, syncing all history.")
@@ -804,7 +866,7 @@ class Discovarr:
                     # Ensure user is in the results dict, even if no items are found later
                     all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
 
-                    history_count = self.db.get_watch_history_count_for_source("trakt")
+                    history_count = self.db.get_media_count_for_provider("trakt")
                     limit_for_provider = None 
                     if history_count == 0:
                         self.logger.debug(f"Trakt watch history count={history_count}, syncing all history.")
@@ -949,16 +1011,16 @@ class Discovarr:
         Returns:
             List[Dict[str, Any]]: List of active media entries
         """
-        return self.db.get_non_ignored_media()
+        return self.db.get_non_ignored_suggestions()
 
-    def get_ignored_media(self) -> List[Dict[str, Any]]:
+    def get_ignored_suggestions(self) -> List[Dict[str, Any]]:
         """
         Get all ignored media entries from the database.
 
         Returns:
             List[Dict[str, Any]]: List of ignored media entries
         """
-        return self.db.get_ignored_media()
+        return self.db.get_ignored_suggestions()
 
     def toggle_ignore_status(self, media_id: int) -> Dict[str, Any]:
         """

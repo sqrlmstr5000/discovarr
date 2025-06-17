@@ -75,9 +75,9 @@ class DiscovarrScheduler(Schedule):
         elif func_name == 'get_active_media':
             # Synchronous, expects no runtime args/kwargs.
             return self.discovarr.get_active_media
-        elif func_name == 'get_ignored_media':
+        elif func_name == 'get_ignored_suggestions':
             # Synchronous, expects no runtime args/kwargs.
-            return self.discovarr.get_ignored_media
+            return self.discovarr.get_ignored_suggestions
         elif func_name == 'get_similar_media':
             # _create_search_function returns an async function directly.
             # It expects runtime kwargs from Schedule.kwargs in DB.

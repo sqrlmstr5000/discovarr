@@ -5,6 +5,9 @@ from jinja2 import Template
 from .settings import SettingsService
 from providers.gemini import GeminiProvider
 from providers.ollama import OllamaProvider
+from providers.jellyfin import JellyfinProvider
+from providers.plex import PlexProvider
+from providers.trakt import TraktProvider
 from .database import Database # Import Database for type hinting
 
 class LLMService:
@@ -16,16 +19,22 @@ class LLMService:
                  logger: logging.Logger,
                  settings_service: SettingsService,
                  db_service: Database, # Add db_service parameter
-                 enabled_llm_provider_names: List[str],
+                 enabled_providers: Dict[str, List[str]], # Corrected type hint
                  gemini_provider: Optional[GeminiProvider] = None,
-                 ollama_provider: Optional[OllamaProvider] = None):
+                 ollama_provider: Optional[OllamaProvider] = None,
+                 jellyfin_provider: Optional[JellyfinProvider] = None,
+                 plex_provider: Optional[PlexProvider] = None,
+                 trakt_provider: Optional[TraktProvider] = None):
         self.logger = logger
         self.settings = settings_service
         self.db = db_service # Store the database service instance
-        self.enabled_llm_provider_names = enabled_llm_provider_names
+        self.enabled_llm_provider_names = enabled_providers.get("llm", []) # Corrected access
+        self.enabled_library_provider_names = enabled_providers.get("library", []) # Corrected access
         self.gemini_provider = gemini_provider
         self.ollama_provider = ollama_provider
-
+        self.jellyfin_provider = jellyfin_provider
+        self.plex_provider = plex_provider
+        self.trakt_provider = trakt_provider
 
         if not self.enabled_llm_provider_names:
             self.logger.info("No LLM providers are enabled in the configuration.")
@@ -142,13 +151,13 @@ class LLMService:
             self.logger.debug(f"Prompt template_string: {template_string}")
             # Get current movies and series from jellyfin to exclude from suggestions
             all_media_for_exclusion = []
-            if self.jellyfin_enabled and self.jellyfin_enable_media:
+            if JellyfinProvider.PROVIDER_NAME in self.enabled_library_provider_names and self.settings.get("jellyfin", "enable_media"):
                 self.logger.debug("Jellyfin media enabled, fetching for exclusion list.")
-                jellyfin_media = self.jellyfin.get_all_items_filtered(attribute_filter="Name")
+                jellyfin_media = self.jellyfin_provider.get_all_items_filtered(attribute_filter="Name")
                 if jellyfin_media: all_media_for_exclusion.extend(jellyfin_media)
-            if self.plex_enabled and self.plex_enable_media: # Add Plex media if Plex is configured and media enabled
+            if PlexProvider.PROVIDER_NAME in self.enabled_library_provider_names and self.settings.get("plex", "enable_media"):
                 self.logger.debug("Plex media enabled, fetching for exclusion list.")
-                plex_media = self.plex.get_all_items_filtered(attribute_filter="name") # ItemsFiltered uses 'name'
+                plex_media = self.plex_provider.get_all_items_filtered(attribute_filter="name") # ItemsFiltered uses 'name'
                 if plex_media: all_media_for_exclusion.extend(plex_media)
                 
             # Trakt media exclusion is not typically done this way, so self.trakt_enable_media is not used here.
@@ -156,7 +165,7 @@ class LLMService:
 
             self.logger.debug(f"{len(all_media_for_exclusion)} titles found")
             # Get ignored suggestions to exclude as well
-            all_ignored = self.db.get_ignored_media_titles()
+            all_ignored = self.db.get_ignored_suggestions_titles()
             self.logger.debug(f"{len(all_ignored)} titles to ignore")
             # Combine lists and convert to a comma-separated string
             all_ignored_str = ",".join(all_ignored + all_media_for_exclusion)
@@ -170,16 +179,16 @@ class LLMService:
             all_watch_history = []
 
             # Fetch Jellyfin
-            if self.jellyfin_enabled and self.jellyfin_enable_media: # Favorites are a type of "media" list
+            if JellyfinProvider.PROVIDER_NAME in self.enabled_library_provider_names and self.settings.get("jellyfin", "enable_media"):
                 self.logger.debug("Jellyfin media enabled, fetching favorites.")
                 jellyfin_default_user_setting = self.settings.get("jellyfin", "default_user")
                 self.logger.debug(f"Jellyfin default_user setting for favorites: {jellyfin_default_user_setting}")
                 if jellyfin_default_user_setting:
-                    user = self.jellyfin.get_user_by_name(username=jellyfin_default_user_setting)
+                    user = self.jellyfin_provider.get_user_by_name(username=jellyfin_default_user_setting)
                     if user:
                         # Get favorites
                         self.logger.debug(f"Fetching Jellyfin favorites for specific user: {user.name}")
-                        user_favorites_items = self.jellyfin.get_favorites(user_id=user.id) 
+                        user_favorites_items = self.jellyfin_provider.get_favorites(user_id=user.id) 
                         if user_favorites_items:
                             user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
                             all_favorites.extend(user_favorites_names)
@@ -188,29 +197,29 @@ class LLMService:
                         self.logger.warning(f"Jellyfin default user '{jellyfin_default_user_setting}' not found")
                 else: 
                     self.logger.debug("Fetching Jellyfin favorites for all users.")
-                    all_jellyfin_users = self.jellyfin.get_users()
+                    all_jellyfin_users = self.jellyfin_provider.get_users()
                     if all_jellyfin_users:
                         for user_in_loop in all_jellyfin_users:
-                            user_favorites_items = self.jellyfin.get_favorites(user_id=user_in_loop.id) 
+                            user_favorites_items = self.jellyfin_provider.get_favorites(user_id=user_in_loop.id) 
                             if user_favorites_items:
                                 user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
                                 self.logger.debug(f"Jellyfin User {user_in_loop.name} favorites: {user_favorites_names}")
                                 all_favorites.extend(user_favorites_names)
 
             # Fetch Plex
-            if self.plex_enabled and self.plex_enable_media: # Favorites are a type of "media" list
+            if PlexProvider.PROVIDER_NAME in self.enabled_library_provider_names and self.settings.get("plex", "enable_media"):
                 self.logger.debug("Plex media enabled, fetching favorites.")
                 plex_default_user_setting = self.settings.get("plex", "default_user")
                 self.logger.debug(f"Plex default_user setting for favorites: {plex_default_user_setting}")
                 plex_user_context_id_for_api = None
 
                 if plex_default_user_setting:
-                    plex_user_obj = self.plex.get_user_by_name(plex_default_user_setting)
+                    plex_user_obj = self.plex_provider.get_user_by_name(plex_default_user_setting)
                     if plex_user_obj:
                         self.logger.debug(f"Fetching Plex favorites for specific user: {plex_user_obj.name}")
                         plex_user_context_id_for_api = plex_user_obj.id
                         plex_user_context_name_for_log = plex_user_obj.name
-                        plex_favs_items = self.plex.get_favorites(user_id=plex_user_context_id_for_api) 
+                        plex_favs_items = self.plex_provider.get_favorites(user_id=plex_user_context_id_for_api) 
                         if plex_favs_items:
                             plex_favs_names = [fav.name for fav in plex_favs_items if fav.name]
                             all_favorites.extend(plex_favs_names)
@@ -219,10 +228,10 @@ class LLMService:
                             self.logger.warning(f"Plex default user '{plex_default_user_setting}' not found")
                 else: 
                     self.logger.debug("No default Plex user specified. Fetching favorites for all Plex users.")
-                    all_plex_users = self.plex.get_users()
+                    all_plex_users = self.plex_provider.get_users()
                     if all_plex_users:
                         for plex_user_in_loop in all_plex_users:
-                            user_favorites_items = self.plex.get_favorites(user_id=plex_user_in_loop.id)
+                            user_favorites_items = self.plex_provider.get_favorites(user_id=plex_user_in_loop.id)
                             if user_favorites_items:
                                 user_favorites_names = [fav.name for fav in user_favorites_items if fav.name]
                                 self.logger.debug(f"Plex User {plex_user_in_loop.name} favorites: {user_favorites_names}")
@@ -240,7 +249,7 @@ class LLMService:
             self.logger.debug(f"Fetching watch history from database for prompt...")
             db_watch_history = self.db.get_watch_history(limit=None) # Get all watch history from DB
             if db_watch_history:
-                watch_history_names = [o["title"] for o in db_watch_history if o["title"]]
+                watch_history_names = [o["media"]["title"] for o in db_watch_history if o["media"]["title"]]
                 # Deduplicate and sort for consistency in the prompt
                 unique_watch_history_names = sorted(list(set(watch_history_names)))
                 all_watch_history.extend(unique_watch_history_names)
@@ -251,7 +260,7 @@ class LLMService:
                 self.logger.info(f"Watch History: {watch_history_str}")
 
             if not template_string:
-                template_string = self.default_prompt
+                template_string = self.settings.get("app", "default_prompt")
 
             template = Template(template_string)
             rendered_prompt = template.render(
@@ -279,7 +288,7 @@ class LLMService:
             self.logger.debug(f"Prompt template_string: {template_string}")
             
             if not template_string:
-                template_string = self.default_prompt
+                template_string = self.settings.get("app", "default_research_prompt")
 
             template = Template(template_string)
             rendered_prompt = template.render(

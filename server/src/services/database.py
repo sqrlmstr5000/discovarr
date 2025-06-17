@@ -393,78 +393,64 @@ class Database:
             self.logger.error(f"Error deleting media entry by TMDB ID {tmdb_id}: {e}")
             return False
 
-    def add_watch_history(self, title: str, media_id: str, media_type: str, watched_by: str, last_played_date: str, source: Optional[str] = None, poster_url: Optional[str] = None, poster_url_source: Optional[str] = None) -> bool:
+    def add_watch_history(self, media_id: int, watched_by: str, last_played_date_iso: str) -> bool:
         """
         Add or update a watch history entry.
-        Assumes WatchHistory model has fields for media_jellyfin_id and media_type.
 
         Args:
-            title (str): The title of the media.
-            media_jellyfin_id (str): The Jellyfin ID of the media.
-            media_type (str): The type of media (e.g., 'movie', 'tv').
+            media_id (int): The primary key of the Media record.
             watched_by (str): The identifier of who watched the media.
-            last_played_date_str (str): The ISO 8601 string of the last played date.
-            poster_url (Optional[str]): URL of the poster image.
+            last_played_date_iso (str): The ISO 8601 string of the last played date.
 
         Returns:
             bool: True if the operation was successful, False otherwise.
         """
         try:
             # If last_played_date is None, default to now (UTC)
-            if last_played_date is None:
-                self.logger.info(f"last_played_date is None for '{title}', defaulting to current UTC time.")
-                last_played_date = datetime.now(timezone.utc).isoformat()
+            if last_played_date_iso is None:
+                self.logger.info(f"last_played_date_iso is None for media_id {media_id}, defaulting to current UTC time.")
+                last_played_date_iso = datetime.now(timezone.utc).isoformat()
                 
             dt_last_played_date: datetime
             try:
                 # Parse the ISO 8601 date string.
-                # Jellyfin's LastPlayedDate is typically UTC and may end with 'Z'.
-                if last_played_date.endswith('Z'):
+                if last_played_date_iso.endswith('Z'):
                     # Python's fromisoformat before 3.11 doesn't handle 'Z' directly.
-                    dt_last_played_date = datetime.fromisoformat(last_played_date[:-1] + '+00:00')
+                    dt_last_played_date = datetime.fromisoformat(last_played_date_iso[:-1] + '+00:00')
                 else:
                     # Attempt direct parsing for other ISO 8601 compliant strings (e.g., with offset)
-                    dt_last_played_date = datetime.fromisoformat(last_played_date)
+                    dt_last_played_date = datetime.fromisoformat(last_played_date_iso)
             except ValueError as ve:
-                self.logger.error(f"Error parsing last_played_date '{last_played_date}' for '{title}': {ve}")
+                self.logger.error(f"Error parsing last_played_date_iso '{last_played_date_iso}' for media_id {media_id}: {ve}")
                 return False
             
             # Convert to naive UTC datetime for storage, common practice for SQLite with Peewee.
-            # This assumes your `watched_at` field in Peewee stores naive datetimes representing UTC.
             dt_last_played_date_utc = dt_last_played_date.astimezone(timezone.utc).replace(tzinfo=None)
             
-            # Check if an entry already exists for this media_jellyfin_id and user.
-            # This requires WatchHistory model to have 'media_jellyfin_id' and 'media_type' fields.
+            # Check if an entry already exists for this media_id and user.
             existing_entry = WatchHistory.get_or_none(
-                (fn.Lower(WatchHistory.title) == title.lower()) &
+                (WatchHistory.media_id == media_id) &
                 (fn.Lower(WatchHistory.watched_by) == watched_by.lower())
             )
 
             if existing_entry:
-                existing_entry.last_played_date = dt_last_played_date_utc
-                existing_entry.media_type = media_type # Update type
-                existing_entry.media_id = media_id # This is either the TMDB or JellyfinID
-                existing_entry.updated_at = datetime.now()
-                existing_entry.source = source
-                existing_entry.poster_url = poster_url
-                existing_entry.poster_url_source = poster_url_source
-                existing_entry.save()
-                self.logger.info(f"Successfully updated watch history for '{title}' (ID: {id}) by {watched_by}")
+                if existing_entry.last_played_date != dt_last_played_date_utc:
+                    existing_entry.last_played_date = dt_last_played_date_utc
+                    existing_entry.updated_at = datetime.now()
+                    existing_entry.save()
+                    self.logger.info(f"Successfully updated watch history for media_id {media_id} by {watched_by}")
+                else:
+                    return False
             else:
                 WatchHistory.create(
-                    title=title,
                     media_id=media_id,
-                    media_type=media_type,
                     watched_by=watched_by,
-                    last_played_date=dt_last_played_date_utc,
-                    source=source,
-                    poster_url=poster_url,
-                    poster_url_source=poster_url_source,
+                    last_played_date=dt_last_played_date_utc
                 )
-                self.logger.info(f"Successfully added new watch history for '{title}' (ID: {id}) by {watched_by}")
+                self.logger.info(f"Successfully added new watch history for media_id {media_id} by {watched_by}")
             return True
         except Exception as e:
-            self.logger.error(f"Error processing watch history for title '{title}' (ID: {id}): {e}", exc_info=True)
+            self.logger.error(f"Error processing watch history for media_id {media_id}: {e}", exc_info=True)
             return False
         
     def update_watch_history_processed(self, watch_history_id: int, processed: bool) -> bool:
@@ -495,54 +481,7 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error updating processed status for watch history ID {watch_history_id}: {e}", exc_info=True)
             return False
-        
-    def get_watch_history_by_title(self, title: str, watched_by: Optional[str] = None) -> Optional[WatchHistory]:
-        """Get the most recent watch history entry for a specific title and user.
 
-        Args:
-            title (str): The title of the media.
-            watched_by (str): The identifier of who watched the media.
-
-        Returns:
-            Optional[WatchHistory]: The WatchHistory object if found, otherwise None.
-        """
-        try:
-            if watched_by:
-                wh = WatchHistory.select().where(
-                (WatchHistory.title == title) & (WatchHistory.watched_by == watched_by)
-            )
-            else:
-                wh = WatchHistory.select().where(WatchHistory.title == title)
-            return wh.order_by(WatchHistory.watched_at.desc()).get_or_none()
-        except Exception as e:
-            self.logger.error(f"Error retrieving watch history for title '{title}' by {watched_by}: {e}")
-            return None
-
-    def get_watch_history_for_title(self, title: str, watched_by: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """
-        Get the most recent watch history entry for a specific title, optionally filtered by user.
-
-        Args:
-            title (str): The title of the media.
-            watched_by (Optional[str]): The identifier of who watched the media. If None, history for all users is returned.
-
-        Returns:
-            Optional[Dict[str, Any]]: A dictionary representing the most recent watch history entry, or None if not found.
-        """
-        try:
-            query = WatchHistory.select().where(WatchHistory.title == title)
-
-            if watched_by:
-                query = query.where(WatchHistory.watched_by == watched_by)
-
-            # Get the most recent entry
-            history_entry = query.order_by(WatchHistory.last_played_date.desc()).get_or_none()
-
-            return model_to_dict(history_entry) if history_entry else None
-        except Exception as e:
-            self.logger.error(f"Error retrieving watch history for title '{title}' (user: {watched_by}): {e}")
-            return None
-        
     def get_watch_history_item_by_id(self, history_item_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a specific watch history item by its ID.
@@ -588,23 +527,23 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error retrieving watch history: {e}")
             return []
-
-    def get_watch_history_count_for_source(self, source: str) -> int:
+        
+    def get_media_count_for_provider(self, provider: str) -> int:
         """
-        Get the count of watch history entries for a specific source.
+        Get the count of media entries for a specific source_provider.
 
         Args:
-            source (str): The source provider name (e.g., 'plex', 'jellyfin', 'trakt').
+            provider (str): The source_provider name (e.g., 'plex', 'jellyfin', 'tmdb').
 
         Returns:
-            int: The number of watch history entries for the given source.
+            int: The number of media entries for the given provider.
         """
         try:
-            count = WatchHistory.select().where(WatchHistory.source == source).count()
-            self.logger.debug(f"Found {count} watch history entries for source '{source}'.")
+            count = Media.select().where(Media.source_provider == provider).count()
+            self.logger.debug(f"Found {count} media entries for provider '{provider}'.")
             return count
         except Exception as e:
-            self.logger.error(f"Error retrieving watch history count for source '{source}': {e}")
+            self.logger.error(f"Error retrieving media count for provider '{provider}': {e}")
             return 0
 
     def delete_watch_history_item(self, history_item_id: int) -> bool:
@@ -725,36 +664,36 @@ class Database:
             self.logger.error(f"Error toggling ignore status: {e}")
             return False
 
-    def get_non_ignored_media(self) -> List[Dict[str, Any]]:
+    def get_non_ignored_suggestions(self) -> List[Dict[str, Any]]:
         """Get all media entries that are not ignored."""
         try:
             media = (Media
                     .select()
-                    .where(Media.ignore == False)
+                    .where((Media.ignore == False) & (Media.entity_type == 'suggestion'))
                     .order_by(Media.created_at.desc()))
             return [model_to_dict(m) for m in media]
         except Exception as e:
             self.logger.error(f"Error retrieving non-ignored media: {e}")
             return []
 
-    def get_ignored_media(self) -> List[Dict[str, Any]]:
+    def get_ignored_suggestions(self) -> List[Dict[str, Any]]:
         """Get all media entries that are ignored."""
         try:
             media = (Media
                     .select()
-                    .where(Media.ignore == True)
+                    .where((Media.ignore == True) & (Media.entity_type == 'suggestion'))
                     .order_by(Media.title))
             return [model_to_dict(m) for m in media]
         except Exception as e:
             self.logger.error(f"Error retrieving ignored media: {e}")
             return []
 
-    def get_ignored_media_titles(self) -> List[str]:
+    def get_ignored_suggestions_titles(self) -> List[str]:
         """Get all distinct titles of ignored media entries."""
         try:
             query = (Media
                     .select(Media.title)
-                    .where(Media.ignore == True)
+                    .where((Media.ignore == True) &(Media.entity_type == 'suggestion'))
                     .order_by(Media.title)
                     .distinct())
             return [m.title for m in query]

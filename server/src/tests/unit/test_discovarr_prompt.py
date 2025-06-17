@@ -39,7 +39,7 @@ def test_get_prompt_basic_scenario(mocked_discovarr_instance: Discovarr):
     dv.jellyfin.get_favorites.return_value = [ItemsFiltered(name="JellyfinFav1", id="tmdb_jf1", type="tv", last_played_date="2023-01-02T00:00:00Z")]
 
     # Database Data:
-    dv.db.get_ignored_media_titles.return_value = ["Ignored C"]
+    dv.db.get_ignored_suggestions_titles.return_value = ["Ignored C"]
     dv.db.get_watch_history.return_value = [{"title": "Watched D"}] # Assumes structure from db method
     
     # --- Call the method under test ---
@@ -62,7 +62,7 @@ def test_get_prompt_basic_scenario(mocked_discovarr_instance: Discovarr):
     assert "History=Watched D" in prompt # Assumes only one watched item for simplicity here
     
     # Verify mock calls
-    dv.db.get_ignored_media_titles.assert_called_once()
+    dv.db.get_ignored_suggestions_titles.assert_called_once()
     dv.db.get_watch_history.assert_called_once_with(limit=None) # get_prompt fetches all history
     
     dv.plex.get_all_items_filtered.assert_called_once_with(attribute_filter="name")
@@ -120,7 +120,7 @@ def test_get_prompt_custom_template_string(mocked_discovarr_instance: Discovarr)
     }.get((group, key), default)
 
 
-    dv.db.get_ignored_media_titles.return_value = ["Ignored X"] # Set ignored media for the assertion
+    dv.db.get_ignored_suggestions_titles.return_value = ["Ignored X"] # Set ignored media for the assertion
     dv.db.get_watch_history.return_value = [{"title": "Watched Y"}]
 
     custom_template = "Custom: {{ media_name }} | Exclude: {{ all_media }} | Favs: {{ favorites }} | History: {{ watch_history }}"

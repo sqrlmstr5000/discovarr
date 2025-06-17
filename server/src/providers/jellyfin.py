@@ -95,7 +95,58 @@ class JellyfinProvider(LibraryProviderBase):
         self.logger.info(f"Jellyfin user '{username}' not found.")
         return None
     
-    
+    def get_item_external_ids(self, item_id: str, user_id: str) -> Optional[Dict[str, str]]:
+        """
+        Retrieves external provider IDs for a specific item from Jellyfin.
+
+        Args:
+            item_id (str): The ID of the item to retrieve.
+            user_id (str): The ID of the user in whose context to fetch the item.
+
+        Returns:
+            Optional[Dict[str, str]]: A dictionary with keys 'tmdbid', 'tvdbid', 'imdbid'
+                                      and their corresponding values, or None on error.
+        """
+        try:
+            # Endpoint to get a single item by ID, including UserData for a specific user
+            endpoint = urljoin(self.jellyfin_url, f"/Users/{user_id}/Items/{item_id}")
+            headers = {
+                "Authorization": self.jellyfin_auth,
+                "Content-Type": "application/json",
+            }
+            params = {
+                "Fields": "ProviderIds", # Only fetch ProviderIds
+            }
+            self.logger.debug(f"Get item info from endpoint: {endpoint} with params: {params}")
+
+            response = requests.get(endpoint, headers=headers, params=params)
+            response.raise_for_status()
+            raw_item = response.json()
+
+            if not raw_item:
+                self.logger.warning(f"No item found with ID {item_id} or API returned empty response.")
+                return None
+            
+            provider_ids = raw_item.get("ProviderIds", {})
+            if not provider_ids:
+                self.logger.warning(f"No ProviderIds found for item ID {item_id}.")
+                return None
+            
+            data = {
+                "tmdbid": provider_ids.get("Tmdb"),
+                "tvdbid": provider_ids.get("Tvdb"),
+                "imdbid": provider_ids.get("Imdb")
+            }
+            self.logger.debug(f"Retrieved external IDs for item ID {item_id}: {data}")
+            return data
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Jellyfin get_item_external_ids request failed for ID {item_id}: {e}")
+        except json.JSONDecodeError:
+            self.logger.error(f"Error decoding JSON response from Jellyfin in get_item_external_ids for ID {item_id}.")
+        except Exception as e:
+            self.logger.exception(f"An unexpected error occurred in get_item_external_ids for ID {item_id}: {e}")
+        return None
 
     def get_recently_watched(self, user_id: str, limit: Optional[int] = None) -> Optional[List[ItemsFiltered]]:
         """
@@ -121,7 +172,7 @@ class JellyfinProvider(LibraryProviderBase):
             }
             params = {
                 "Recursive": "true",
-                "Fields": "BasicSyncInfo,MediaSource",
+                "Fields": "BasicSyncInfo,MediaSource,Overview,Genres,Tags,ProductionLocations,ProviderIds,SeriesStudio,Studios",
                 "IncludeItemTypes": "Movie,Episode",
                 "SortBy": "DatePlayed",
                 "SortOrder": "Descending",
@@ -137,7 +188,7 @@ class JellyfinProvider(LibraryProviderBase):
             raw_items = response.json().get("Items", [])
             
             # Filter and transform to ItemsFiltered
-            filtered_items = self.get_items_filtered(items=raw_items) # No attribute_filter needed here
+            filtered_items = self.get_items_filtered(items=raw_items, user_id=user_id) # No attribute_filter needed here
             if isinstance(filtered_items, list) and all(isinstance(i, ItemsFiltered) for i in filtered_items):
                 return filtered_items
             self.logger.warning("get_items_filtered did not return a list of ItemsFiltered for Jellyfin recently watched.")
@@ -203,7 +254,7 @@ class JellyfinProvider(LibraryProviderBase):
             self.logger.exception(f"An unexpected error occurred in get_favorites: {e}")
         return None
 
-    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
+    def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], user_id: Optional[str] = None, attribute_filter: Optional[str] = None, source_type: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
         """
         Filters recently watched items, ensuring uniqueness by media name (movie or series)
         and updating to the most recent last_played_date if duplicates are found.
@@ -229,6 +280,7 @@ class JellyfinProvider(LibraryProviderBase):
         # Use a dictionary to store unique media items by name, ensuring the most recent play date.
         # Key: media_name (str)
         # Value: Dict[str, Any] (processed media item: {'name', 'id', 'type', 'last_played_date'})
+        external_id_cache: Dict[str, Optional[Dict[str, str]]] = {} # Cache for external IDs within this call
         processed_media_map: Dict[str, ItemsFiltered] = {}
 
         for item in items:
@@ -245,19 +297,23 @@ class JellyfinProvider(LibraryProviderBase):
             item_jellyfin_type = item.get("Type", "Unknown")  # "Movie", "Episode", etc.
             media_name: Optional[str] = None
             media_id: Optional[str] = None
+            tmdb_id: Optional[str] = None
             output_media_type: Optional[str] = None
 
             if item_jellyfin_type == "Episode":
                 media_name = item.get("SeriesName")
                 media_id = item.get("SeriesId")
+                tmdb_id = item.get("ProviderIds", {}).get("Tmdb", None)
                 output_media_type = "tv"
             elif item_jellyfin_type == "Series":
                 media_name = item.get("Name")
                 media_id = item.get("Id")
+                tmdb_id = item.get("ProviderIds", {}).get("Tmdb", None)
                 output_media_type = "tv"
             elif item_jellyfin_type == "Movie":
                 media_name = item.get("Name")
                 media_id = item.get("Id")
+                tmdb_id = item.get("ProviderIds", {}).get("Tmdb", None)
                 output_media_type = "movie"
             else:
                 self.logger.debug(f"Skipping item with unhandled type '{item_jellyfin_type}': {item.get('Name', 'Unknown Item')}")
@@ -266,6 +322,20 @@ class JellyfinProvider(LibraryProviderBase):
             if not media_name:
                 self.logger.debug(f"Skipping item due to missing name (media_name is None): {item}")
                 continue
+        
+            if not tmdb_id and user_id:
+                if media_id in external_id_cache:
+                    self.logger.debug(f"TMDB ID=None: Using cached external IDs for media_id '{media_id}'")
+                    external_ids = external_id_cache[media_id]
+                else:
+                    self.logger.debug(f"TMDB ID=None: Fetching external IDs for media '{media_name}' (ID: {media_id})")
+                    external_ids = self.get_item_external_ids(item_id=media_id, user_id=user_id)
+                    external_id_cache[media_id] = external_ids # Store in cache
+
+                if external_ids:
+                    tmdb_id = external_ids.get("tmdbid")
+                else:
+                    self.logger.debug(f"Missing TMDB ID for media '{media_name}' (ID: {media_id}) after fetch/cache lookup.")
 
             poster_url = f"{self.jellyfin_url}/Items/{media_id}/Images/Primary?fillHeight=1440&fillWidth=960&quality=96"
 
@@ -281,7 +351,7 @@ class JellyfinProvider(LibraryProviderBase):
             else:
                 processed_media_map[media_name] = ItemsFiltered(
                     name=media_name,
-                    id=media_id,
+                    id=tmdb_id,
                     type=output_media_type,
                     last_played_date=current_last_played_date_str,
                     play_count=play_count,

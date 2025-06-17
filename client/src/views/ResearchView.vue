@@ -36,6 +36,7 @@
             @click="handleResearch"
             :disabled="!selectedMediaId || researchLoading"
             class="px-4 py-3 bg-discovarr hover:bg-amber-500 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
+            :title="!selectedMediaId ? 'Select a media item first' : 'Generate research for selected media'"
           >
             <span v-if="researchLoading">Researching...</span>
             <span v-else>Research</span>
@@ -43,9 +44,10 @@
           <button
             @click="handleViewPrompt"
             :disabled="!mediaName"
-            class="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
+            class="px-4 py-3 bg-indigo-600 hover:bg-gray-600 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
+            title="View the research prompt template"
           >
-            View Prompt
+            Preview Prompt
           </button>
         </div>
         <!-- Search Results Dropdown -->
@@ -73,16 +75,38 @@
         <p>Further research content and components will go here.</p>
         <!-- Add your research-specific components and layout here -->
       </div>
+
     </div>
+    <!-- Full Screen Prompt Modal using Teleport -->
+    <Teleport to="body">
+      <div v-if="showPromptModal" class="fixed inset-0 z-[9999] bg-black bg-opacity-90 flex flex-col p-4 sm:p-8">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-2xl font-semibold text-white">Research Prompt Preview</h3>
+          <button @click="showPromptModal = false" class="text-gray-300 hover:text-white p-2 rounded-full hover:bg-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-7 h-7">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <textarea
+          :value="promptForModal"
+          readonly
+          class="flex-grow w-full p-3 bg-gray-800 text-gray-200 border border-gray-700 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-discovarr"
+          placeholder="Loading prompt..."
+        ></textarea>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { config } from '../config';
 import { useToastStore } from '@/stores/toast';
 import GlobalToast from '@/components/GlobalToast.vue';
+import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
+const settingsStore = useSettingsStore();
 
 const quote = ref("The only true wisdom is in knowing you know nothing.");
 const quoteAuthor = ref("Socrates (Placeholder)");
@@ -103,7 +127,13 @@ const researchLoading = ref(false);
 const mediaNameInputRef = ref(null); // Ref for the input element
 const searchResultsContainerRef = ref(null); // Ref for the search results container
 
+const showPromptModal = ref(false);
+const promptForModal = ref('');
+
+const currentDefaultResearchPrompt = computed(() => settingsStore.getSettingValue("app", "default_research_prompt"));
+
 let debounceTimer = null;
+let isSelectingMedia = false; // Flag to manage selection state
 
 const debounce = (func, delay) => {
   return (...args) => {
@@ -149,23 +179,35 @@ const performSearch = async (query) => {
 const debouncedSearch = debounce(performSearch, 300);
 
 watch(mediaName, (newValue) => {
+  if (isSelectingMedia) {
+    // If mediaName is changing due to a selection, don't reset selectedMediaId
+    return;
+  }
   if (document.activeElement === mediaNameInputRef.value) { // Only search if input is focused
     selectedMediaId.value = null; // Clear selected ID if user types again
     selectedMediaType.value = null;
     debouncedSearch(newValue);
   } else if (!newValue) { // If mediaName is cleared programmatically (e.g. after selection)
+    // This case might also need to be careful if isSelectingMedia is true,
+    // but selectMedia already handles clearing searchResults and showSearchResults.
     searchResults.value = [];
     showSearchResults.value = false;
   }
 });
 
 const selectMedia = (media) => {
+  isSelectingMedia = true; // Set flag before reactive changes
+
   mediaName.value = media.title;
-  selectedMediaId.value = media.media_id; // Assuming media_id from search is tmdb_id
+  selectedMediaId.value = media.media_id; 
   selectedMediaType.value = media.media_type;
   searchResults.value = [];
   showSearchResults.value = false;
-  console.log('Selected Media:', mediaName.value, selectedMediaId.value, selectedMediaType.value);
+  console.log('Selected Media for research:', mediaName.value, 'PK:', selectedMediaId.value, 'Type:', selectedMediaType.value, 'TMDB ID:', media.tmdb_id);
+
+  nextTick(() => {
+    isSelectingMedia = false; // Reset flag after reactive updates have propagated
+  });
 };
 
 const handleInputBlur = (event) => {
@@ -197,7 +239,7 @@ const handleResearch = async () => {
     const response = await fetch(`${config.apiUrl}/research`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_name: mediaName.value, media_id: selectedMediaId.value })
+      body: JSON.stringify({ media_name: mediaName.value, media_id: selectedMediaId.value, prompt: currentDefaultResearchPrompt.value })
     });
     const result = await response.json();
     if (!response.ok || !result.success) {
@@ -212,9 +254,28 @@ const handleResearch = async () => {
   }
 };
 
-const handleViewPrompt = () => {
-  // Placeholder for viewing prompt functionality
-  console.log('View Prompt button clicked for:', mediaName.value);
-  // This might open a modal or display the prompt by calling /research/prompt/preview
+const handleViewPrompt = async () => {
+  if (!mediaName.value) {
+    toastStore.show('Please enter or select a media name first.', 'warning');
+    return;
+  }
+  promptForModal.value = 'Loading prompt...'; // Placeholder while fetching
+  showPromptModal.value = true;
+
+  try {
+    const response = await fetch(`${config.apiUrl}/research/prompt/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ media_name: mediaName.value, prompt: currentDefaultResearchPrompt.value })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to fetch prompt preview.');
+    }
+    promptForModal.value = data.result;
+  } catch (error) {
+    toastStore.show(`Error fetching prompt: ${error.message}`, 'error');
+    promptForModal.value = `Error loading prompt: ${error.message}`;
+  }
 };
 </script>

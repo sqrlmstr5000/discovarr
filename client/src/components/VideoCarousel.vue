@@ -30,14 +30,14 @@ watch(() => props.historyItems, (newHistoryItems) => {
                 const currentData = imageDisplayData.value[itemId];
                 
                 // If poster URL hasn't changed, keep existing state to avoid re-flicker
-                if (currentData && currentData.originalPosterUrl === historyItem.poster_url) {
+                if (currentData && currentData.originalPosterUrl === historyItem.media.poster_url) {
                     newImageStates[itemId] = currentData;
                 } else {
-                    if (historyItem.poster_url) {
+                    if (historyItem.media.poster_url) {
                         newImageStates[itemId] = {
-                            src: `${config.apiUrl.replace(/\/api$/, '')}/cache/image/${historyItem.poster_url}`,
+                            src: `${config.apiUrl.replace(/\/api$/, '')}/cache/image/${historyItem.media.poster_url}`,
                             isLoading: true,
-                            originalPosterUrl: historyItem.poster_url
+                            originalPosterUrl: historyItem.media.poster_url
                         };
                     } else {
                         newImageStates[itemId] = {
@@ -135,7 +135,7 @@ const triggerDeleteHistoryItem = (historyId) => {
                     <img
                         v-show="imageDisplayData[historyItem.id] && !imageDisplayData[historyItem.id].isLoading"
                         :src="imageDisplayData[historyItem.id]?.src"
-                        :alt="historyItem.title"
+                        :alt="historyItem.media.title"
                         style="user-select: none" 
                         class="pointer-events-none w-full h-full object-cover"
                         @load="onImageLoad(historyItem.id)"
@@ -146,7 +146,7 @@ const triggerDeleteHistoryItem = (historyId) => {
                         v-if="imageDisplayData[historyItem.id] && !imageDisplayData[historyItem.id].isLoading"
                         @click="triggerDeleteHistoryItem(historyItem.id)"
                         class="absolute top-2 left-2 z-10 p-1.5 bg-black bg-opacity-60 rounded-full text-white hover:text-red-500 hover:bg-opacity-80 focus:outline-none transition-colors duration-150"
-                        :aria-label="'Delete ' + historyItem.title"
+                        :aria-label="'Delete ' + historyItem.media.title"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -155,9 +155,9 @@ const triggerDeleteHistoryItem = (historyId) => {
                     <!-- Search Button -->
                     <button
                         v-if="imageDisplayData[historyItem.id] && !imageDisplayData[historyItem.id].isLoading"
-                        @click="navigateToSearch(historyItem.title)"
+                        @click="navigateToSearch(historyItem.media.title)"
                         class="absolute top-2 right-2 z-10 p-1.5 bg-black bg-opacity-60 rounded-full text-white hover:bg-opacity-80 focus:outline-none transition-colors duration-150"
-                        :aria-label="'Search for media similar to ' + historyItem.title"
+                        :aria-label="'Search for media similar to ' + historyItem.media.title"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -166,7 +166,7 @@ const triggerDeleteHistoryItem = (historyId) => {
                     <div 
                         v-if="imageDisplayData[historyItem.id] && !imageDisplayData[historyItem.id].isLoading"
                         class="absolute bottom-0 left-0 w-full p-1 bg-black bg-opacity-60 text-white text-xs text-center truncate">
-                        {{ historyItem.title }}
+                        {{ historyItem.media.title }}
                     </div>
                 </div>
             </Slide>

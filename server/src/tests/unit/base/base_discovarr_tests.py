@@ -68,7 +68,7 @@ def mocked_discovarr_instance(tmp_path):
     dv.settings.get.side_effect = lambda group, key, default=None: default_settings_values_for_test.get((group, key), default)
 
     # Default behaviors for db and providers (can be overridden in specific tests)
-    dv.db.get_ignored_media_titles.return_value = []
+    dv.db.get_ignored_suggestions_titles.return_value = []
     dv.db.get_watch_history.return_value = []
     for provider_mock in [dv.plex, dv.jellyfin, dv.trakt]:
         provider_mock.get_all_items_filtered.return_value = []

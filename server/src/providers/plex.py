@@ -213,6 +213,55 @@ class PlexProvider(LibraryProviderBase):
             self.logger.error(f"Error fetching favorites: {e}", exc_info=True)
             return None
 
+    def get_item(self, item_id: str) -> Optional[ItemsFiltered]:
+        """
+        Retrieves a specific item by its ID (ratingKey) from Plex and processes it.
+
+        Args:
+            item_id (str): The ID (ratingKey) of the item to retrieve.
+
+        Returns:
+            Optional[ItemsFiltered]: The processed item if found, or None on error.
+        """
+        if not self.server:
+            self.logger.warning("Plex server not connected. Cannot get item.")
+            return None
+        if not item_id:
+            self.logger.error("Plex Item ID (ratingKey) is required for get_item.")
+            return None
+
+        try:
+            rating_key = int(item_id)
+        except ValueError:
+            self.logger.error(f"Invalid Plex Item ID format: {item_id}. Must be an integer (ratingKey).")
+            return None
+
+        try:
+            self.logger.debug(f"Fetching Plex item with ratingKey: {rating_key}")
+            # fetchItem can return Movie, Show, Episode, etc.
+            plex_item: Union[Movie, Show, Episode] = self.server.fetchItem(rating_key)
+            
+            if not plex_item: # Should raise NotFound if not found, but as a safeguard
+                self.logger.warning(f"No item found with ratingKey {rating_key} or API returned empty response.")
+                return None
+
+            # Convert the single Plex object to a list of one dictionary for get_items_filtered
+            raw_item_json_list = json.loads(toJson([plex_item])) if plex_item else []
+
+            filtered_list = self.get_items_filtered(items=raw_item_json_list)
+            
+            if isinstance(filtered_list, list) and len(filtered_list) == 1 and isinstance(filtered_list[0], ItemsFiltered):
+                return filtered_list[0]
+            else:
+                self.logger.warning(f"get_items_filtered did not return a single ItemsFiltered object for item ID {item_id}. Result: {filtered_list}")
+                return None
+
+        except NotFound:
+            self.logger.info(f"Plex item with ratingKey {rating_key} not found.")
+        except Exception as e:
+            self.logger.error(f"Error fetching Plex item with ratingKey {rating_key}: {e}", exc_info=True)
+        return None
+
     def get_items_filtered(self, items: Optional[List[Dict[str, Any]]], attribute_filter: Optional[str] = None) -> Union[List[ItemsFiltered], List[str]]:
         """
         Filters Plex items (dictionaries from JSON), consolidating episodes under series and ensuring uniqueness.
@@ -245,7 +294,7 @@ class PlexProvider(LibraryProviderBase):
             #
             # Leave for manual debugging
             #
-            #self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
+            self.logger.debug(f"Plex raw item: {json.dumps(item, indent=2)}")
             # Determine item type from dictionary keys (based on plexapi.utils.toJson output)
             item_type_from_dict = item.get('type') # 'movie', 'show', 'episode'
 

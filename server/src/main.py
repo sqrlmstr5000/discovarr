@@ -213,7 +213,7 @@ class ResearchRequest(BaseModel):
 
 class MediaSearchResultItem(BaseModel):
     title: Optional[str] = None
-    media_id: Optional[str] = None # Corresponds to tmdb_id
+    media_id: Optional[int] = None # Corresponds to Media.id (Primary Key)
     media_type: Optional[str] = None
 
 
@@ -615,13 +615,13 @@ async def get_active_media(
     return discovarr.get_active_media()
 
 @api_app.get("/media/ignored")
-async def get_ignored_media(
+async def get_ignored_suggestions(
     discovarr: Discovarr = Depends(get_discovarr),
 ):
     """
     Get all ignored media entries from the database.
     """
-    return discovarr.get_ignored_media()
+    return discovarr.get_ignored_suggestions()
 @api_app.post("/media/{media_id}/toggle-ignore")
 async def toggle_ignore_status(
     media_id: int,

@@ -354,7 +354,7 @@ class TraktProvider(LibraryProviderBase):
 
         for item in items:
             name: Optional[str] = None
-            trakt_id_str: Optional[str] = None
+            tmdb_id: Optional[str] = None
             media_type_for_filter: Optional[str] = None # 'movie' or 'tv'
             last_played_date_iso: Optional[str] = None
             play_count_val: Optional[int] = None
@@ -371,7 +371,7 @@ class TraktProvider(LibraryProviderBase):
                 name = item.title
                 identifier = item.to_identifier()
                 self.logger.debug(f"Movie identifier: {json.dumps(identifier, indent=2)}")
-                trakt_id_str = str(identifier["ids"].get('tmdb', None))
+                tmdb_id = str(identifier["ids"].get('tmdb', None))
                 media_type_for_filter = "movie"
             elif isinstance(item, Episode): 
                 show = item.show
@@ -380,7 +380,7 @@ class TraktProvider(LibraryProviderBase):
                     name = show.title
                     identifier = show.to_identifier()
                     self.logger.debug(f"Show identifier: {json.dumps(identifier, indent=2)}")
-                    trakt_id_str = str(identifier["ids"].get('tmdb', None))
+                    tmdb_id = str(identifier["ids"].get('tmdb', None))
                     media_type_for_filter = "tv"
             else:
                 self.logger.debug(f"Skipping Trakt item of unhandled type: {type(item)}")
@@ -402,7 +402,7 @@ class TraktProvider(LibraryProviderBase):
             else:
                 processed_media_map[unique_key] = ItemsFiltered(
                     name=name,
-                    id=trakt_id_str,
+                    id=tmdb_id,
                     type=media_type_for_filter,
                     last_played_date=last_played_date_iso,
                     play_count=play_count_val,
