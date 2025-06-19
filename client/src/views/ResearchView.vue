@@ -7,6 +7,8 @@ import GlobalToast from '@/components/GlobalToast.vue';
 import Markdown from '@/components/Markdown.vue'; // Adjust path if necessary
 import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessary
 import BrainIcon from 'vue-material-design-icons/Brain.vue';
+import DeleteIcon from 'vue-material-design-icons/Delete.vue'; // Import DeleteIcon
+
 const settingsStore = useSettingsStore();
 
 const route = useRoute();
@@ -54,35 +56,78 @@ const closeModal = () => {
   // promptForModal.value = ''; // Optionally clear if needed
 };
 
+const handleDeleteResearch = async (researchId) => {
+  if (!confirm(`Are you sure you want to delete this research item (ID: ${researchId})? This action cannot be undone.`)) {
+    return;
+  }
+  try {
+    const response = await fetch(`${config.apiUrl}/research/${researchId}`, {
+      method: 'DELETE',
+    });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') {
+      throw new Error(result.message || `Failed to delete research item ${researchId}. Status: ${response.status}`);
+    }
+    toastStore.show(`Research item ${researchId} deleted successfully.`, 'success');
+    await fetchAllResearch(); // Refresh the list
+  } catch (error) {
+    console.error('Error deleting research item:', error);
+    toastStore.show(`Error deleting research: ${error.message}`, 'error');
+  }
+};
+
 const performSearch = async (query) => {
   if (!query || query.length < 2) { // Don't search for very short queries
     searchResults.value = [];
     searchError.value = '';
-    showSearchResults.value = query.length > 0; // Show if there's some text, even if no results yet
+    showSearchResults.value = false; // Hide immediately if query is too short
     return;
   }
-  searchLoading.value = true;
   searchError.value = '';
   searchResults.value = [];
-  showSearchResults.value = true;
+  // Don't immediately show searchResults container.
+  // It will be shown if loading takes time, or if there are results/errors.
+
+  // Timer to delay showing the "Searching..." message
+  const loadingTimer = setTimeout(() => {
+    // Only show loading if the search for this query is still relevant
+    // and we don't already have results or an error.
+    if (mediaName.value === query && searchResults.value.length === 0 && !searchError.value) {
+      searchLoading.value = true;
+      showSearchResults.value = true; // Show dropdown for "Searching..."
+    }
+  }, 300); // 300ms delay
 
   try {
     const response = await fetch(`${config.apiUrl}/media/search?query=${encodeURIComponent(query)}`);
+    clearTimeout(loadingTimer); // Clear timer as soon as response is received
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Search failed' }));
       throw new Error(errorData.detail || `HTTP error ${response.status}`);
     }
     const data = await response.json();
-    searchResults.value = data;
     if (data.length === 0) {
-      searchError.value = 'No media found matching your query.';
+      searchResults.value = []; // Ensure searchResults is empty
+      // The finally block will handle hiding if searchLoading was false
+    } else {
+      searchResults.value = data;
+      showSearchResults.value = true; // Ensure it's shown if there are results
     }
   } catch (error) {
     console.error('Error searching media:', error);
     searchError.value = error.message || 'Failed to search media.';
     searchResults.value = [];
+    clearTimeout(loadingTimer); // Also clear timer on error
+    showSearchResults.value = true; // Show dropdown to display the error
   } finally {
-    searchLoading.value = false;
+    if (searchLoading.value) { // If the "Searching..." message was shown
+      searchLoading.value = false;
+    }
+    // If, after everything, there are no results and no error, hide the dropdown.
+    if (searchResults.value.length === 0 && !searchError.value) {
+      showSearchResults.value = false;
+    }
   }
 };
 
@@ -96,10 +141,17 @@ watch(mediaName, (newValue) => {
   if (document.activeElement === mediaNameInputRef.value) { // Only search if input is focused
     selectedMediaId.value = null; // Clear selected ID if user types again
     selectedMediaType.value = null;
-    debouncedSearch(newValue);
+    if (newValue && newValue.length >= 2) {
+      debouncedSearch(newValue);
+    } else {
+      // If query becomes too short, clear everything and hide results
+      clearTimeout(debounceTimer); // Clear any pending debounced search
+      searchResults.value = [];
+      searchError.value = '';
+      searchLoading.value = false; // Reset loading state
+      showSearchResults.value = false;
+    }
   } else if (!newValue) { // If mediaName is cleared programmatically (e.g. after selection)
-    // This case might also need to be careful if isSelectingMedia is true,
-    // but selectMedia already handles clearing searchResults and showSearchResults.
     searchResults.value = [];
     showSearchResults.value = false;
   }
@@ -182,7 +234,8 @@ const handleResearch = async () => {
       throw new Error(result.message || 'Failed to initiate research.');
     }
     toastStore.show(`Research started for ${mediaName.value}: ${result.message}`, 'success');
-    // TODO: Display research_text or navigate, or update a component with the result.research_text
+    // Refresh the list of all research items
+    await fetchAllResearch();
   } catch (error) {
     toastStore.show(`Research Error: ${error.message}`, 'error');
   } finally {
@@ -243,11 +296,11 @@ const savePromptAsDefault = () => {
   <div class="flex flex-col h-screen text-white">
     <GlobalToast />
     <!-- Top Row (25% height) -->
-    <div class="h-1/6 p-6 md:p-8 flex flex-col relative">
+    <div class="h-1/5 p-6 md:p-8 flex flex-col relative">
       <div class="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 flex-grow flex items-center justify-center relative overflow-hidden">
         <blockquote class="text-center">
           <p class="text-md italic text-gray-300 px-4">
-             The goal of this research tool is to better understand why you like what you like. To do that we use a LLM to analyze each title based on a common template and save the resulting report.
+             The goal of this research tool is to better understand why you like what you like. To do that we use the LLM to analyze a title based on a common template and save the resulting report.
              Right now that's about it. In the future I would like to expand on this. If we create an embedding for each report, we could then use that to perform a semantic search on your library like:
              "psycholocical thrillers set in the desert" or "sad movies with a happy ending" or "movies with a strong female lead". Then use that to create a Collection.
           </p>
@@ -259,7 +312,7 @@ const savePromptAsDefault = () => {
     </div>
 
     <!-- Bottom Row (75% height) -->
-    <div class="h-5/6 p-6 md:p-8 bg-gray-900/30 overflow-y-auto">
+    <div class="h-4/5 p-6 md:p-8 bg-gray-900/30 overflow-y-auto">
       <div class="mb-6 relative">
         <div class="flex items-end space-x-3">
           <div class="flex-grow">
@@ -281,7 +334,7 @@ const savePromptAsDefault = () => {
             @click="handleResearch"
             :disabled="!mediaName || researchLoading"
             class="px-4 py-3 bg-discovarr hover:bg-amber-500 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
-            :title="!selectedMediaId ? 'Select a media item first' : 'Generate research for selected media'"
+            :title="!selectedMediaId ? 'Select a media item first' : 'Generate research...'"
           >
             <span v-if="researchLoading">Researching...</span>
             <span v-else>Research</span>
@@ -298,7 +351,7 @@ const savePromptAsDefault = () => {
             @click="handleEditDefaultPrompt"
             :disabled="researchLoading"
             class="px-4 py-3 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
-            title="Edit the default research prompt template"
+            title="Edit the research prompt template"
           >
             Edit Prompt
           </button>
@@ -339,9 +392,18 @@ const savePromptAsDefault = () => {
               class="text-xl font-semibold text-discovarr mb-2 cursor-pointer flex justify-between items-center"
             >
               <span>{{ item.media_title || 'Unknown Media' }}</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 transition-transform duration-200" :class="{'rotate-180': !collapsedStates[item.id]}">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
+              <div class="flex items-center">
+                <button
+                  @click.stop="handleDeleteResearch(item.id)"
+                  class="p-1 text-gray-400 hover:text-red-500 focus:outline-none rounded-full hover:bg-gray-700/80 mr-2"
+                  title="Delete this research item"
+                >
+                  <DeleteIcon :size="20" />
+                </button>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 transition-transform duration-200" :class="{'rotate-180': !collapsedStates[item.id]}">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </div>
             </h3>
             <div v-if="!collapsedStates[item.id]" class="mt-3">
               <Markdown :mdstring="item.research" />

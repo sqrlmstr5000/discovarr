@@ -7,7 +7,7 @@ from datetime import datetime
 from .settings import SettingsService
 from .llm import LLMService
 from .database import Database # Import Database for type hinting
-from .models import MediaResearch, MediaResearchEmbedding # Import MediaResearch model
+from .models import MediaResearch
 from providers.gemini import GeminiProvider # For checking provider name
 from providers.ollama import OllamaProvider # For checking provider name
 
@@ -152,7 +152,8 @@ class ResearchService:
             self.logger.error(f"Database error saving MediaResearch for media_id {media_id}: {e}", exc_info=True)
             return {"success": False, "message": f"Database error: {e}"}
         
-        # 5. Create embedding and save to MediaResearchEmbedding table
+        # 5. Create embedding and save to MediaResearchEmbedding table (not using right now, keep for later)
+        """
         try:
             if MediaResearchEmbedding.table_exists():
                 embedding = await self.get_research_embedding(research_text)
@@ -171,7 +172,7 @@ class ResearchService:
         except Exception as e:
             self.logger.error(f"Database error saving MediaResearchEmbedding for media_id {media_id}: {e}", exc_info=True)
             return {"success": False, "message": f"Database error saving embedding: {e}"}
-        
+        """
         # If we've reached here, all operations (or the ones possible) were successful
         return {
             "success": True, 

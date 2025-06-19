@@ -465,6 +465,30 @@ async def get_research_endpoint(
         logger.error(f"Unexpected error retrieving research: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while retrieving research: {str(e)}")
     
+@api_app.delete("/research/{research_id}")
+async def delete_media_research_endpoint(
+    research_id: int,
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Delete a specific MediaResearch entry by its ID.
+    """
+    logger.info(f"Received request to delete MediaResearch entry with ID: {research_id}")
+    try:
+        result = discovarr.delete_media_research(research_id)
+        if not result.get("success"):
+            status_code = result.get("status_code", 500) # Default to 500 if not specified
+            # If status_code is 404, it means not found.
+            raise HTTPException(status_code=status_code, detail=result.get("message"))
+        
+        # On successful deletion
+        return {"status": "success", "message": result.get("message")}
+    except HTTPException: # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error deleting MediaResearch entry {research_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while deleting MediaResearch entry {research_id}.")
+
 @api_app.post("/research/prompt/preview")
 async def preview_research_prompt_endpoint(
     request: ResearchPromptPreviewRequest,

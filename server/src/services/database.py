@@ -6,10 +6,11 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
 from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
-#import sqlite_vec # Keep this commented out for now, as we are not using vector extensions yet.
+# Keep this commented out for now, as we are not using vector extensions yet.
+#import sqlite_vec 
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, LLMStat, Schedule, Settings, Migrations, MediaResearch, MediaResearchEmbedding
+from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, LLMStat, Schedule, Settings, Migrations, MediaResearch
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -717,20 +718,29 @@ class Database:
             return False
 
     def add_search(self, prompt: str, name: str = None, id: Optional[int] = None, **kwargs) -> Optional[Dict[str, Any]]:
-        """Add a new search prompt."""
-        try: 
-            # Allow inserting a search with an ID, useful for migrations or specific cases
+        """Add a new search prompt.
+        If ID is provided and exists, the operation fails for that ID.
+        If ID is provided and does not exist, it creates with that ID.
+        If ID is not provided, it creates a new entry with an auto-generated ID.
+        All additional keyword arguments are stored as a JSON string in the 'kwargs' field.
+        """
+        try:
+            search_kwargs_json = json.dumps(kwargs) if kwargs else None
+
             if id is not None:
                 search = Search.get_or_none(Search.id == id)
-                if not search:
-                    search = Search.create(id=id, prompt=prompt, name=name, kwargs=json.dumps(kwargs.get('kwargs')))
-                else:
-                    self.logger.debug(f"Skipping search add, one already exists with ID {id}")
-            else:
-                search = Search.create(prompt=prompt, name=name, kwargs=json.dumps(kwargs.get('kwargs')))
+                if search: # Entry with this ID already exists
+                    self.logger.warning(f"Cannot add search. A search with the specified ID {id} already exists.")
+                    return None # Indicate failure or ID collision
+                else: # Entry with this ID does not exist, create it with the specified ID
+                    search = Search.create(id=id, prompt=prompt, name=name, kwargs=search_kwargs_json)
+                    self.logger.debug(f"Created new search with specified ID {id}")
+            else: # No ID provided, create a new entry with an auto-generated ID
+                search = Search.create(prompt=prompt, name=name, kwargs=search_kwargs_json)
+                self.logger.debug(f"Created new search with auto-generated ID {search.id}")
             return model_to_dict(search)
         except Exception as e:
-            self.logger.error(f"Error adding search: {e}")
+            self.logger.error(f"Error adding search: {e}", exc_info=True)
             return None
 
     def update_search(self, search_id: int, prompt: str, name: str = None, **kwargs) -> bool:
@@ -1000,6 +1010,22 @@ class Database:
         except Exception as e:
             self.logger.error(f"Error retrieving all research entries: {e}", exc_info=True)
             return []
+        
+    def delete_media_research(self, research_id: int) -> bool:
+        """
+        Delete a MediaResearch entry by its ID.
+
+        Args:
+            research_id (int): The ID of the MediaResearch entry to delete.
+
+        Returns:
+            bool: True if deletion was successful, False otherwise.
+        """
+        try:
+            return MediaResearch.delete().where(MediaResearch.id == research_id).execute() > 0
+        except Exception as e:
+            self.logger.error(f"Error deleting MediaResearch entry with ID {research_id}: {e}", exc_info=True)
+            return False
         
     def get_setting(self, name: str) -> Optional[Dict[str, Any]]:
         """Get a setting by name."""

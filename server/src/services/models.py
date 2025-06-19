@@ -3,7 +3,8 @@ from peewee import *
 from datetime import datetime
 from typing import Optional, Dict, List, Any 
 from pydantic import BaseModel, Field
-from pgvector.peewee import HalfVectorField
+# Keep this commented out for now, as we are not using vector extensions yet.
+#from pgvector.peewee import HalfVectorField 
 
 # Peewee Models
 database = DatabaseProxy() # Use a Proxy to allow runtime DB selection
@@ -93,9 +94,12 @@ class MediaResearch(PeeweeBaseModel):
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
 
+# Keep this commented out for now, as we are not using vector extensions yet.
+"""
 class MediaResearchEmbedding(PeeweeBaseModel):
     mediaresearch = ForeignKeyField(MediaResearch, backref='mediaresearch_ref', unique=True, null=False, on_delete='CASCADE') # One-to-one relationship
     embedding = HalfVectorField(dimensions=4000) 
+"""
 
 class WatchHistory(PeeweeBaseModel):
     media = ForeignKeyField(Media, backref='media_ref', on_delete='CASCADE') # One Media to Many WatchHistory entries

@@ -608,6 +608,27 @@ class Discovarr:
         except Exception as e:
             self.logger.error(f"Error retrieving research for media ID {media_id}: {e}", exc_info=True)
             return None
+
+    def delete_media_research(self, research_id: int) -> Dict[str, Any]:
+        """
+        Deletes a specific MediaResearch entry.
+
+        Args:
+            research_id (int): The ID of the MediaResearch entry to delete.
+
+        Returns:
+            Dict[str, Any]: A dictionary indicating success or failure.
+        """
+        self.logger.info(f"Attempting to delete MediaResearch entry with ID: {research_id}")
+        if self.db.delete_media_research(research_id):
+            self.logger.info(f"Successfully deleted MediaResearch entry {research_id}.")
+            return {"success": True, "message": f"MediaResearch entry {research_id} deleted successfully."}
+        else:
+            # This could mean the entry was not found or a DB error occurred.
+            # The db method logs specifics.
+            self.logger.warning(f"Failed to delete MediaResearch entry {research_id}. It might not exist or a database error occurred.")
+            return {"success": False, "message": f"MediaResearch entry {research_id} not found or could not be deleted.", "status_code": 404}
+
     def search_media(self, query: str) -> List[Dict[str, Any]]:
         """
         Searches for media in the database based on a query string.
