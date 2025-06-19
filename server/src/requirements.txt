@@ -14,5 +14,3 @@ aiofiles
 psycopg2-binary
 pgvector
 sqlite-vec
-sentence-transformers
-markdown

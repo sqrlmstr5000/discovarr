@@ -6,10 +6,10 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
 from peewee import fn, SqliteDatabase, PostgresqlDatabase, JOIN, OperationalError
-import sqlite_vec
+#import sqlite_vec # Keep this commented out for now, as we are not using vector extensions yet.
 from playhouse.migrate import SqliteMigrator, PostgresqlMigrator, migrate
 from playhouse.shortcuts import model_to_dict
-from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, LLMStat, Schedule, Settings, Migrations, MediaResearch
+from .models import database, MODELS as BASE_MODELS, DEFAULT_PROMPT_TEMPLATE, Media, WatchHistory, Search, LLMStat, Schedule, Settings, Migrations, MediaResearch, MediaResearchEmbedding
 from .backup import BackupService
 from .settings import SettingsService # Import SettingsService
 from .migrations import Migration
@@ -124,7 +124,9 @@ class Database:
         # Prepare the list of models for table creation
         default_models = list(BASE_MODELS) # Start with the base list of models from models.py
 
-        self.logger.info(f"Database type set to: {self.db_type}. Initializing vector extension and adding MediaResearch table...")
+        # Keep this commented out for now, as we are not using vector extensions yet.
+        """
+        self.logger.info(f"Database type set to: {self.db_type}. Initializing vector extension and adding MediaResearchEmbedding table...")
         if self.db_type == "postgres":
             try:
                 # Attempt to create the 'vector' extension if it doesn't exist.
@@ -136,23 +138,23 @@ class Database:
                 # This can happen if the extension is not installed on the server,
                 # or if the user lacks permissions to create extensions.
                 self.logger.warning(f"Failed to create or confirm 'vector' extension in PostgreSQL: {op_err}. "
-                                   "The MediaResearch table (and vector features) will not be available. "
+                                   "The MediaResearchEmbedding table (and vector features) will not be available. "
                                    "Ensure the 'vector' extension is installed on your PostgreSQL server and the user has permissions.")
                 vector_extension_exists = False
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred while trying to enable the 'vector' extension: {e}. "
-                                  "MediaResearch table may not be configured as expected.", exc_info=True)
+                                  "MediaResearchEmbedding table may not be configured as expected.", exc_info=True)
                 vector_extension_exists = False
 
             if vector_extension_exists:
-                self.logger.info("PostgreSQL 'vector' extension is active. MediaResearch table will be included.")
+                self.logger.info("PostgreSQL 'vector' extension is active. MediaResearchEmbedding table will be included.")
                 if vector_extension_exists:
-                    if MediaResearch not in default_models: # Add if not already part of BASE_MODELS
-                        default_models.append(MediaResearch)
+                    if MediaResearchEmbedding not in default_models: # Add if not already part of BASE_MODELS
+                        default_models.append(MediaResearchEmbedding)
             else:
-                self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaResearch table will NOT be included.")
-                if MediaResearch in default_models: # Remove if it was in BASE_MODELS and extension is not active
-                    default_models.remove(MediaResearch)
+                self.logger.info("PostgreSQL 'vector' extension is NOT active. MediaResearchEmbedding table will NOT be included.")
+                if MediaResearchEmbedding in default_models: # Remove if it was in BASE_MODELS and extension is not active
+                    default_models.remove(MediaResearchEmbedding)
         elif self.db_type == "sqlite":
             sqlite_vec_loaded_successfully = False 
             try:
@@ -166,9 +168,10 @@ class Database:
                                    "Ensure 'sqlite-vec' is correctly installed and accessible.", exc_info=True)
             
             if sqlite_vec_loaded_successfully:
-                if MediaResearch not in default_models: default_models.append(MediaResearch)
+                if MediaResearchEmbedding not in default_models: default_models.append(MediaResearchEmbedding)
             else:
-                if MediaResearch in default_models: default_models.remove(MediaResearch)
+                if MediaResearchEmbedding in default_models: default_models.remove(MediaResearchEmbedding)
+        """
 
         self.backup_service = BackupService(logger=self.logger, db_type=self.db_type, db_config=db_config_for_backup)
 
@@ -978,7 +981,7 @@ class Database:
             
             results = []
             for entry in query: # entry is a MediaResearch instance
-                entry_dict = model_to_dict(entry, recurse=False, exclude=[MediaResearch.embedding]) # Exclude embedding
+                entry_dict = model_to_dict(entry, recurse=False) # Exclude embedding: , exclude=[MediaResearch.embedding]
 
                 # The 'media' key from MediaResearch.media (FK object) needs to be 'media_id' (the actual ID value)
                 # for the Pydantic MediaResearchResponse model. model_to_dict(entry) gives the ID value for FKs.

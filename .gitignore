@@ -34,3 +34,4 @@ __pycache__/
 # Docker
 /compose.yml
 **/env.sh
+.env*

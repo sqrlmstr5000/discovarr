@@ -49,6 +49,8 @@ const examplePrompts = ref([
   { title: 'Movies with Specific Actors', text: 'Recommend {{limit}} movies starring Tom Hanks and Meg Ryan. \n\nExclude the following media from your recommendations: {{all_media}}.' },
   { title: 'Based on Favorites', text: 'Recommend {{limit}} movies based on my favorites: {{favorites}}. \n\nExclude the following media from your recommendations: {{all_media}}.' },
   { title: 'Based on Watch History', text: 'Suggest {{limit}} movies or TV shows based on my watch history: {{watch_history}}. \n\nUse this list to determine what I should watch next: {{all_media}}.' },
+  { title: 'Based on Mood', text: 'What is the overall feeling or mood of {{media_name}}? (e.g., suspenseful, whimsical, gritty, romantic, melancholic, hopeful). \n\nRecommend {{limit}} movies or tv series that fit this mood. \n\nExclude the following media from your recommendations: {{all_media}}.' },
+  { title: 'Common Genre', text: ' \n\nWhat are the common genres of these titles: {{favorites}}? \n\nRecommend {{limit}} movies or tv series that fit this genre. \n\nExclude the following media from your recommendations: {{all_media}}.' },
 ]);
 
 const selectPrompt = (prompt) => {

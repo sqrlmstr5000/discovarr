@@ -182,16 +182,16 @@ class Discovarr:
         }
 
         if self.jellyfin_enabled:
-            self.enabled_providers["library"].append(JellyfinProvider.PROVIDER_NAME)
+            self.enabled_providers["library"].append("jellyfin") # Use string literal
         if self.plex_enabled:
-            self.enabled_providers["library"].append(PlexProvider.PROVIDER_NAME)
+            self.enabled_providers["library"].append("plex")     # Use string literal
         if self.trakt_enabled:
-            self.enabled_providers["library"].append(TraktProvider.PROVIDER_NAME)
+            self.enabled_providers["library"].append("trakt")   # Use string literal
         
         if self.gemini_enabled:
-            self.enabled_providers["llm"].append(GeminiProvider.PROVIDER_NAME)
+            self.enabled_providers["llm"].append("gemini")   # Use string literal
         if self.ollama_enabled:
-            self.enabled_providers["llm"].append(OllamaProvider.PROVIDER_NAME)
+            self.enabled_providers["llm"].append("ollama")   # Use string literal
 
         # Radarr and Sonarr are "enabled" if their URL and API key are configured
         if self.radarr_url and self.radarr_api_key:
@@ -241,6 +241,7 @@ class Discovarr:
             self.logger.warning("Jellyfin is enabled but URL or API key is missing. Jellyfin service not initialized.")
         else:
             self.logger.info("Jellyfin integration is disabled.")
+        self.logger.debug(f"Inspecting 'Radarr' in reload_configuration: {Radarr}") # New debug
         self.radarr = Radarr(
             url=self.radarr_url,
             api_key=self.radarr_api_key,
@@ -432,7 +433,7 @@ class Discovarr:
             if tmdb_lookup:
                 tmdb_id = tmdb_lookup.get("id")
                 # Get media details from TMDB
-                tmdb_media_detail = self.tmdb.get_media_detail(tmdb_id, media_type)
+                tmdb_media_detail = self.tmdb.get_media_detail(tmdb_id=tmdb_id, media_type=media_type)
 
                 # Get poster art from TMDB if tmdb_media_detail is not None
                 poster_url = None
@@ -731,7 +732,7 @@ class Discovarr:
 
                 if not media_instance:
                     self.logger.info(f"Media '{item.name}', type: ({item.type}) not found in DB. Creating new entry from {source} watch history.")
-                    tmdb_details = self.tmdb.get_media_detail(item.id, item.type) if self.tmdb else None
+                    tmdb_details = self.tmdb.get_media_detail(tmdb_id=item.id, media_type=item.type) if self.tmdb else None
                     
                     poster_url_source_val = item.poster_url # Use poster from provider if available
                     cached_poster_path = None

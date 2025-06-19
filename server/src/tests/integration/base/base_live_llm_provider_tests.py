@@ -1,7 +1,7 @@
 import unittest
 import os
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional, List
 
 from base.llm_provider_base import LLMProviderBase # LLMProviderBase is what we are testing
 from services.models import SuggestionList 
@@ -33,6 +33,16 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
     @abstractmethod
     def _get_model_name(self) -> str:
         """Return a valid model name for the provider to use in tests."""
+        pass
+
+    @abstractmethod
+    def _get_embedding_model_name(self) -> str:
+        """Return a valid embedding model name for the provider to use in embedding tests."""
+        pass
+
+    @abstractmethod
+    def _get_embedding_dimensions(self) -> Optional[int]:
+        """Return the expected output dimensions for the embedding, or None if not applicable/testable."""
         pass
 
     @abstractmethod
@@ -133,4 +143,33 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(first_suggestion, dict, "Each suggestion should be a dictionary.")
             self.assertIn('title', first_suggestion, "Each suggestion should have a 'title'.")
             self.assertIn('mediaType', first_suggestion, "Each suggestion should have a 'mediaType'.")
-            # Add more assertions for other fields in Suggestion model if needed
+
+    async def test_get_embedding_live(self):
+        """Tests the live get_embedding() method of the LLM provider."""
+        if not hasattr(self.provider, 'get_embedding'):
+            self.skipTest(f"Provider '{self.provider.name}' does not implement get_embedding.")
+            return
+
+        embedding_model_name = self._get_embedding_model_name()
+        if not embedding_model_name:
+            self.skipTest("Embedding model name not provided by _get_embedding_model_name() for live test.")
+            return
+            
+        embedding_dimensions = self._get_embedding_dimensions() # Can be None
+
+        sample_text = "This is a sample text to generate an embedding."
+        
+        embedding_result = await self.provider.get_embedding(
+            text_content=sample_text,
+            model=embedding_model_name,
+            dimensions=embedding_dimensions
+        )
+
+        self.assertIsNotNone(embedding_result, f"{self.provider.name}.get_embedding() should return a result, not None.")
+        self.assertIsInstance(embedding_result, list, f"{self.provider.name}.get_embedding() should return a list.")
+        
+        if embedding_result: # If the list is not empty
+            self.assertTrue(all(isinstance(val, float) for val in embedding_result), "All elements in the embedding list should be floats.")
+            self.assertTrue(len(embedding_result) > 0, "Embedding list should not be empty if successful.")
+            if embedding_dimensions is not None:
+                self.assertEqual(len(embedding_result), embedding_dimensions, f"Embedding dimensions should match. Expected {embedding_dimensions}, got {len(embedding_result)}.")

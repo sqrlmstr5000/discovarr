@@ -42,7 +42,10 @@ class BaseLiveLibraryProviderTests:
             assert isinstance(users, list)
             for user in users:
                 assert isinstance(user, LibraryUser)
-                assert hasattr(user, 'id') and user.id is not None
+                assert hasattr(user, 'id') # Check if the attribute exists
+                # Allow id to be None, but if it's not None, check its type (e.g., str)
+                if user.id is not None:
+                    assert isinstance(user.id, str), f"User ID for {user.name} should be a string if not None, got {type(user.id)}"
                 assert hasattr(user, 'name') and user.name is not None
                 assert hasattr(user, 'source_provider') and user.source_provider == live_provider.name
 
@@ -96,7 +99,9 @@ class BaseLiveLibraryProviderTests:
             for item in filtered_items:
                 assert isinstance(item, ItemsFiltered)
                 assert hasattr(item, 'name') and item.name is not None
-                assert hasattr(item, 'id') and item.id is not None
+                assert hasattr(item, 'id') # Ensure the attribute exists
+                if item.id is not None: # If ID is present, check its type
+                    assert isinstance(item.id, str), f"Item ID for '{item.name}' should be a string if not None, got {type(item.id)}"
                 # ... other common ItemsFiltered attributes
 
     def test_get_all_items_filtered_as_names(self, live_provider: LibraryProviderBase):

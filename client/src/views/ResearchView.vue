@@ -9,20 +9,6 @@ import { useSettingsStore } from '@/stores/settings'; // Adjust path if necessar
 import BrainIcon from 'vue-material-design-icons/Brain.vue';
 const settingsStore = useSettingsStore();
 
-const quotesList = ref([
-  { quote: "The only true wisdom is in knowing you know nothing.", author: "Socrates" },
-  { quote: "Any fool can know. The point is to understand.", author: "Albert Einstein" },
-  { quote: "To know, is to know that you know nothing. That is the meaning of true knowledge.", author: "Socrates" },
-  { quote: "The mind is everything. What you think you become.", author: "Buddha" },
-  { quote: "Life is not a problem to be solved, but an experience to be had." , author: "Alan Watts" },
-]);
-
-const currentQuote = computed(() => {
-  if (quotesList.value.length === 0) return { quote: "No quotes available.", author: "" };
-  const randomIndex = Math.floor(Math.random() * quotesList.value.length);
-  return quotesList.value[randomIndex];
-});
-
 const route = useRoute();
 const toastStore = useToastStore();
 
@@ -257,13 +243,14 @@ const savePromptAsDefault = () => {
   <div class="flex flex-col h-screen text-white">
     <GlobalToast />
     <!-- Top Row (25% height) -->
-    <div class="h-1/4 p-6 md:p-8 flex flex-col relative">
+    <div class="h-1/6 p-6 md:p-8 flex flex-col relative">
       <div class="bg-gray-800 p-4 rounded-lg shadow-md border border-gray-700 flex-grow flex items-center justify-center relative overflow-hidden">
         <blockquote class="text-center">
-          <p class="text-xl italic text-gray-300 px-4">
-            "{{ currentQuote.quote }}"
+          <p class="text-md italic text-gray-300 px-4">
+             The goal of this research tool is to better understand why you like what you like. To do that we use a LLM to analyze each title based on a common template and save the resulting report.
+             Right now that's about it. In the future I would like to expand on this. If we create an embedding for each report, we could then use that to perform a semantic search on your library like:
+             "psycholocical thrillers set in the desert" or "sad movies with a happy ending" or "movies with a strong female lead". Then use that to create a Collection.
           </p>
-          <footer class="mt-2 text-sm text-gray-500">- {{ currentQuote.author }}</footer>
         </blockquote>
         <div class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 opacity-20">
           <BrainIcon :size="64" fillColor="#4A5568" /> 
@@ -272,7 +259,7 @@ const savePromptAsDefault = () => {
     </div>
 
     <!-- Bottom Row (75% height) -->
-    <div class="h-3/4 p-6 md:p-8 bg-gray-900/30 overflow-y-auto">
+    <div class="h-5/6 p-6 md:p-8 bg-gray-900/30 overflow-y-auto">
       <div class="mb-6 relative">
         <div class="flex items-end space-x-3">
           <div class="flex-grow">
@@ -301,7 +288,7 @@ const savePromptAsDefault = () => {
           </button>
           <button
             @click="handleViewPrompt"
-            :disabled="!mediaName"
+            :disabled="!mediaName || researchLoading"
             class="px-4 py-3 bg-indigo-600 hover:bg-gray-600 text-white font-semibold rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition ease-in-out duration-150"
             title="View the research prompt template"
           >

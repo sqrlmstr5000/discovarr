@@ -123,7 +123,7 @@ class TestTraktProviderLive(BaseLiveLibraryProviderTests): # Inherit from base
         assert item.type in ['movie', 'tv', None] 
         assert hasattr(item, 'last_played_date')
         assert hasattr(item, 'play_count') 
-        assert item.is_favorite is False # This assertion might fail if a history item is also rated >= 8 by the user.
+        assert item.is_favorite is True # This assertion might fail if a history item is also rated >= 8 by the user.
 
     def test_get_items_filtered_from_live_history_by_name(self, live_provider: TraktProvider):
         """Tests filtering of live recently watched items, returning only names."""

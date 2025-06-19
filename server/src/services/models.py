@@ -78,7 +78,7 @@ class Media(PeeweeBaseModel):
     genres = TextField(null=True) 
     original_language = CharField(null=True) # e.g., 'en', 'ja'
     ignore = BooleanField(default=False)
-    search = ForeignKeyField(Search, backref='search', null=True)
+    search = ForeignKeyField(Search, backref='search_ref', null=True)
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
     favorite = BooleanField(default=False)
@@ -90,9 +90,12 @@ class MediaResearch(PeeweeBaseModel):
     media = ForeignKeyField(Media, backref='media_ref', unique=False, null=True, on_delete='CASCADE') # One-to-many relationship
     title = CharField(null=False)
     research = TextField(null=False) # To store research notes or extended details
-    embedding = HalfVectorField(dimensions=4000) 
     created_at = DateTimeField(default=datetime.now)
     updated_at = DateTimeField(default=datetime.now)
+
+class MediaResearchEmbedding(PeeweeBaseModel):
+    mediaresearch = ForeignKeyField(MediaResearch, backref='mediaresearch_ref', unique=True, null=False, on_delete='CASCADE') # One-to-one relationship
+    embedding = HalfVectorField(dimensions=4000) 
 
 class WatchHistory(PeeweeBaseModel):
     media = ForeignKeyField(Media, backref='media_ref', on_delete='CASCADE') # One Media to Many WatchHistory entries
@@ -126,7 +129,7 @@ class Migrations(PeeweeBaseModel):
     class Meta:
         table_name = 'migrations'
 
-MODELS = [Media, WatchHistory, Search, LLMStat, Schedule, Migrations, Settings]
+MODELS = [Media, MediaResearch, WatchHistory, Search, LLMStat, Schedule, Migrations, Settings]
 
 # Application Models
 
@@ -174,7 +177,7 @@ class WatchHistoryCreateRequest(BaseModel):
 
 # Constants
 DEFAULT_PROMPT_TEMPLATE = "Recommend {{limit}} tv series or movies similar to {{media_name}}. \n\nExclude the following media from your recommendations: {{all_media}}"
-DEFAULT_PROMPT_RESEARCH_TEMPLATE = """Please provide an in-depth analysis of {{media_name}}. Use the following markdown template as a basis for your research.
+DEFAULT_PROMPT_RESEARCH_TEMPLATE = """Please provide an in-depth analysis of {{media_name}}. Use the following markdown template as a basis for your research. Respond in markdown only without any backticks or 'markdown' tags.
 
 # Movie/TV Series Analysis
 
@@ -183,6 +186,8 @@ DEFAULT_PROMPT_RESEARCH_TEMPLATE = """Please provide an in-depth analysis of {{m
 **Director(s):** [Insert Director(s) Here] 
 
 **Writer(s):** [Insert Writer(s) Here] 
+
+**Leading Actors(s):** [Insert Leading Actors(s) Here] 
 
 **Year of Release:** [Insert Year Here] 
 

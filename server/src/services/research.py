@@ -7,7 +7,7 @@ from datetime import datetime
 from .settings import SettingsService
 from .llm import LLMService
 from .database import Database # Import Database for type hinting
-from .models import MediaResearch # Import MediaResearch model
+from .models import MediaResearch, MediaResearchEmbedding # Import MediaResearch model
 from providers.gemini import GeminiProvider # For checking provider name
 from providers.ollama import OllamaProvider # For checking provider name
 
@@ -125,36 +125,56 @@ class ResearchService:
 
         self.logger.info(f"Successfully generated research content for '{media_name}'. Length: {len(research_text)}")
 
-        # 4. Create embedding for the research text
-        embedding = await self.get_research_embedding(research_text)
-        if embedding is None:
-            self.logger.error(f"Failed to create embedding for research text of '{media_name}'.", exc_info=True)
-            return {"success": False, "message": "Failed to create embedding for research content."}
-        
-        self.logger.info(f"Successfully created embedding for research content of '{media_name}'.")
-
-        # 5. Save to MediaResearch table (Upsert: update if exists, else create)
+        # 4. Save to MediaResearch table (Upsert: update if exists, else create)
+        research_entry = None # Initialize research_entry
+        created = False # Initialize created
         try:
             if media_id is not None:
+                # Enforce a one-to-one relationship for now. I could see allowing a research history in the future.
                 research_entry, created = MediaResearch.get_or_create(
                     media_id=media_id, # Use media_id for lookup if it's provided
-                    defaults={'research': research_text, 'embedding': embedding, 'title': media_name}
+                    defaults={'research': research_text, 'title': media_name} # No embedding here
                 )
                 if not created: # If it existed, update it
                     research_entry.research = research_text
-                    research_entry.embedding = embedding
-                    # research_entry.title = media_name # Title should not change if media_id is the same
                     research_entry.updated_at = datetime.now()
                     research_entry.save()
-                self.logger.info(f"Successfully {'created' if created else 'updated'} research data in MediaResearch for media_id {media_id} (Entry ID: {research_entry.id}).")
-                return {"success": True, "message": "Research data generated and saved.", "research_id": research_entry.id, "research_text": research_text}
             else:
                 # If media_id is None, always create a new entry
                 research_entry = MediaResearch.create(
-                    research=research_text, embedding=embedding, title=media_name, media_id=None
+                    research=research_text, title=media_name, media_id=None
                 )
                 self.logger.info(f"Successfully created new research data (no media_id) for title '{media_name}' (Entry ID: {research_entry.id}).")
                 return {"success": True, "message": "Research data generated and saved (no media association).", "research_id": research_entry.id, "research_text": research_text}
+            
+            self.logger.info(f"Successfully {'created' if created else 'updated'} MediaResearch entry for '{media_name}' (ID: {research_entry.id}).")
         except Exception as e:
             self.logger.error(f"Database error saving MediaResearch for media_id {media_id}: {e}", exc_info=True)
             return {"success": False, "message": f"Database error: {e}"}
+        
+        # 5. Create embedding and save to MediaResearchEmbedding table
+        try:
+            if MediaResearchEmbedding.table_exists():
+                embedding = await self.get_research_embedding(research_text)
+                if embedding:
+                    self.logger.info(f"Successfully created embedding for research content of '{media_name}'.")
+                    MediaResearchEmbedding.insert(
+                        mediaresearch=research_entry, # Link to the MediaResearch entry
+                        embedding=embedding
+                    ).on_conflict(
+                        conflict_target=[MediaResearchEmbedding.mediaresearch], 
+                        update={MediaResearchEmbedding.embedding: embedding}
+                    ).execute()
+                    self.logger.info(f"Successfully saved/updated embedding in MediaResearchEmbedding for MediaResearch ID {research_entry.id}.")
+                else:
+                    self.logger.warning(f"Failed to generate embedding for '{media_name}'. Research text saved, but embedding is not.")
+        except Exception as e:
+            self.logger.error(f"Database error saving MediaResearchEmbedding for media_id {media_id}: {e}", exc_info=True)
+            return {"success": False, "message": f"Database error saving embedding: {e}"}
+        
+        # If we've reached here, all operations (or the ones possible) were successful
+        return {
+            "success": True, 
+            "message": "Research data generated and saved successfully.", 
+            "research_id": research_entry.id if research_entry else None, 
+        }

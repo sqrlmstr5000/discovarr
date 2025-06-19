@@ -148,7 +148,7 @@ class GeminiProvider(LLMProviderBase):
             'token_counts': generation_result['token_counts']
         }
 
-    async def get_embedding(self, text_content: str, model: str, dimensions: Optional[int] = None) -> Optional[List[float]]:
+    async def get_embedding(self, text_content: str, model: Optional[str] = None, dimensions: Optional[int] = None) -> Optional[List[float]]:
         """
         Generates an embedding for the given text content using a specific Gemini embedding model.
 
@@ -174,7 +174,9 @@ class GeminiProvider(LLMProviderBase):
             self.logger.debug(f"Requesting embedding for text using model: {embedding_model}")
             result = await self.client.aio.models.embed_content(model=embedding_model, 
                                                                 contents=text_content,
-                                                                config={'output_dimensionality': dimensions},)
+                                                                config=types.EmbedContentConfig(
+                                                                    output_dimensionality=dimensions),
+                                                                    task_type="SEMANTIC_SIMILARITY")
             return result.embeddings[0].values
         except Exception as e:
             self.logger.error(f"Error generating embedding with Gemini model {embedding_model}: {e}", exc_info=True)
@@ -223,8 +225,8 @@ class GeminiProvider(LLMProviderBase):
             "model": {"value": "gemini-2.5-flash-preview-05-20", "type": SettingType.STRING, "description": "Gemini model name (e.g., gemini-1.5-flash-latest, gemini-1.5-pro-latest)."},
             "thinking_budget": {"value": 1024.0, "type": SettingType.FLOAT, "description": "Gemini thinking budget (0 to disable, min 1024 if enabled, max 24576)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Gemini temperature for controlling randomness (e.g., 0.7). Values typically range from 0.0 to 2.0."},
-            "embedding_model": {"value": "gemini-embedding-001", "type": SettingType.STRING, "description": "Gemini model name to use for embeddings https://cloud.google.com/vertex-ai/generative-ai/docs/embeddings/get-text-embeddings"},
-            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "description": "Number of dimensions for Gemini embeddings (max: 3072). Higher dimensions may improve quality but increase cost and storage requirements."},
+            "embedding_model": {"value": "gemini-embedding-exp", "type": SettingType.STRING, "show": False, "description": "Gemini model name to use for embeddings (e.g., gemini-embedding-exp)."},
+            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "show": False, "description": "Number of dimensions for Gemini embeddings (max: 3072). Higher dimensions may improve quality but increase cost and storage requirements."},
             "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }
 

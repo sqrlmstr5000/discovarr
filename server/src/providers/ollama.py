@@ -197,7 +197,7 @@ class OllamaProvider(LLMProviderBase):
             "base_url": {"value": "http://ollama:11434", "type": SettingType.URL, "description": "Ollama server base URL (e.g., http://localhost:11434).", "required": True},
             "model": {"value": "llama3", "type": SettingType.STRING, "description": "Ollama model name to use (e.g., llama3, mistral)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "Ollama temperature for controlling randomness (e.g., 0.7). Higher values mean more random."},
-            "embedding_model": {"value": "nomic-embed-text", "type": SettingType.STRING, "description": "Ollama model name to use for embeddings (e.g., nomic-embed-text, mxbai-embed-large). Leave blank to disable Ollama embeddings."},
-            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "description": "Number of dimensions for model embeddings. The size is determined by the model used, e.g., 768 for nomic-embed-text. https://github.com/ollama/ollama/issues/651"},
+            "embedding_model": {"value": "nomic-embed-text", "type": SettingType.STRING, "show": False, "description": "Ollama model name to use for embeddings (e.g., nomic-embed-text, mxbai-embed-large). Leave blank to disable Ollama embeddings."},
+            "embedding_dimensions": {"value": 768, "type": SettingType.INTEGER, "show": False, "description": "Number of dimensions for model embeddings. The size is determined by the model used, e.g., 768 for nomic-embed-text. https://github.com/ollama/ollama/issues/651"},
             "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
         }
