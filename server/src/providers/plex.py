@@ -287,7 +287,7 @@ class PlexProvider(LibraryProviderBase):
             
             current_last_played_date_iso: Optional[str] = None
             play_count_val: Optional[int] = None
-            is_favorite_val: Optional[bool] = None
+            is_favorite_val: Optional[bool] = False
             poster_url_val: Optional[str] = None
             thumb_path: Optional[str] = None
             
