@@ -27,18 +27,6 @@ class SettingsService:
             "auto_media_save": {"value": True, "type": SettingType.BOOLEAN, "description": "Automatically save the results from a Search to the Discovarr Media table"},
             "system_prompt": {"value": "You are a movie recommendation assistant. Your job is to suggest movies to users based on their preferences and current context.", "type": SettingType.STRING, "description": "Default system prompt to guide the model's behavior."},
         },
-        "radarr": {
-            "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL", "required": True},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key", "required": True},
-            "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
-            "root_dir_path": {"value": "/movies", "type": SettingType.STRING, "description": "Root directory path for Radarr"},
-        },
-        "sonarr": {
-            "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL", "required": True},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key", "required": True},
-            "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
-            "root_dir_path": {"value": "/tv", "type": SettingType.STRING, "description": "Root directory path for Sonarr"},
-        },
         "tmdb": {
             "api_key": {"value": None, "type": SettingType.STRING, "description": "TMDB API Read Access Token", "required": True},
         },
@@ -107,16 +95,22 @@ class SettingsService:
         from providers.plex import PlexProvider
         from providers.jellyfin import JellyfinProvider
         from providers.trakt import TraktProvider
+        from providers.radarr import RadarrProvider # Import Radarr
+        from providers.sonarr import SonarrProvider # Import Sonarr
+        from providers.jellyseerr import JellyseerrProvider # Import JellyseerrProvider
         # Add other ProviderBase implementations here
 
         # Define lists of provider classes
         # Ensure these classes have PROVIDER_NAME and get_default_settings
         provider_classes_to_load = [
+            RadarrProvider,
+            SonarrProvider,
             GeminiProvider,
             OllamaProvider,
             PlexProvider,
             JellyfinProvider,
-            TraktProvider
+            TraktProvider,
+            JellyseerrProvider,
         ]
 
         current_default_settings = SettingsService._BASE_DEFAULT_SETTINGS.copy()

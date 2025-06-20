@@ -77,3 +77,13 @@ class LibraryProviderBase(ABC):
         Retrieves all relevant items (e.g., movies, shows) from the library and filters them.
         """
         pass
+
+    @classmethod
+    @abstractmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings specific to this LLM provider.
+        This method should be implemented by each concrete provider class.
+        The structure should align with how settings are defined in SettingsService.
+        """
+        pass

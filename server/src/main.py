@@ -536,9 +536,10 @@ async def get_llm_provider_models(
         raise HTTPException(status_code=503, detail="LLM service unavailable or error fetching models.")
     return models
 
-@api_app.post("/request/{tmdb_id}")
+@api_app.post("/request/{tmdb_id}/{title}")
 async def request_media(
     tmdb_id: str,
+    title: str,  # Optional title for the media item
     request_body: RequestMediaBody,
     discovarr: Discovarr = Depends(get_discovarr),
 ):
@@ -550,15 +551,15 @@ async def request_media(
         request_body: Request body containing media_type, quality_profile_id, and save_default
         discovarr: Discovarr instance from dependency injection
     """
-    logger.info(f"Requesting media: {tmdb_id} with body: {request_body.model_dump_json(indent=2)}")
+    logger.info(f"Requesting media: {tmdb_id}/{title} with body: {request_body.model_dump_json(indent=2)}")
     try:
         # Assuming discovarr.request_media now returns an APIResponse object
         api_response = discovarr.request_media(
-            tmdb_id, request_body.media_type, request_body.quality_profile_id, request_body.save_default
+            request_body.media_type, request_body.quality_profile_id, request_body.save_default, tmdb_id=tmdb_id, title=title
         )
 
         if api_response.success:
-            logger.info(f"Successfully processed media request for {tmdb_id}. Response data: {json.dumps(api_response.data, indent=2) if api_response.data else 'No data'}")
+            logger.info(f"Successfully processed media request for {tmdb_id}/{title}. Response data: {json.dumps(api_response.data, indent=2) if api_response.data else 'No data'}")
             # On success, the actual data from Sonarr/Radarr is in api_response.data
             return api_response.data 
         else:
@@ -567,12 +568,12 @@ async def request_media(
             details = api_response.error # This is a Dict[str, Any]
             full_error_detail = error_message
             status_code = api_response.status_code if isinstance(api_response.status_code, int) else 500
-            logger.error(f"Error requesting media {tmdb_id}: Status {status_code}, Detail: {details}")
+            logger.error(f"Error requesting media {tmdb_id}/{title}: Status {status_code}, Detail: {details}")
             raise HTTPException(status_code=status_code, detail=details)
 
     except Exception as e:
         # Catch any other unexpected exceptions during the endpoint logic itself
-        logger.error(f"Unexpected error in request_media endpoint for {tmdb_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error in request_media endpoint for {tmdb_id}/{title}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

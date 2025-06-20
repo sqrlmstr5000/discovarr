@@ -37,10 +37,6 @@ With Discovarr, you can:
 *   **LLM:**
     *   Google Gemini
     *   Ollama (for local models)
-*   **Database:**
-    *   SQLite (default)
-    *   PostgreSQL
-
 ## Key Features
 
 *   **Media Server Integration:**
@@ -67,11 +63,6 @@ With Discovarr, you can:
     *   Delete media entries from the Discovarr database.
 *   **Search & Discovery:**
     *   Save and manage custom search prompts for AI recommendations.
-    *   Run saved searches to get fresh suggestions.
-    *   Preview rendered prompts before execution.
-    *   Schedule custom searches to run automatically.
-*   **Research Tool:**
-    *   Generate in-depth research or summaries for media items using LLMs.
     *   Run saved searches to get fresh suggestions.
     *   Preview rendered prompts before execution.
     *   Schedule custom searches to run automatically.

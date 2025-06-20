@@ -1,10 +1,13 @@
 import json
 import logging
 from typing import Optional, Dict, Any
-from .response import APIResponse # Import the APIResponse class
-from .api import Api # Import the new Api class
+from base.request_provider_base import RequestProviderBase
+from services.response import APIResponse
+from services.models import SettingType # Import SettingType
 
-class Radarr(Api):
+class RadarrProvider(RequestProviderBase):
+    PROVIDER_NAME = "radarr"
+
     def __init__(self, url: str, api_key: str):
         """Initialize Radarr client.
         
@@ -60,7 +63,7 @@ class Radarr(Api):
             
         return APIResponse(success=True, data=simplified_profiles, status_code=profiles_response.status_code)
 
-    def lookup_movie(self, tmdb_id: int) -> APIResponse:
+    def lookup_media(self, tmdb_id: int) -> APIResponse:
         """Look up movie details from TMDB ID.
         
         Args:
@@ -83,7 +86,7 @@ class Radarr(Api):
         
         return api_response
 
-    def add_movie(self, tmdb_id: int, quality_profile_id: int, root_dir_path: str = "/movies", 
+    def add_media(self, tmdb_id: int, quality_profile_id: int, root_dir_path: str = "/movies", 
                  monitor: bool = True, search_for_movie: bool = True) -> APIResponse:
         """Add a movie to Radarr using TMDb ID.
         
@@ -98,7 +101,7 @@ class Radarr(Api):
             APIResponse: An APIResponse object. If successful, `data` contains the Radarr response.
         """
         # First lookup the movie details
-        lookup_response = self.lookup_movie(tmdb_id)
+        lookup_response = self.lookup_media(tmdb_id)
         if not lookup_response.success:
             return lookup_response # Propagate error from lookup
 
@@ -116,3 +119,24 @@ class Radarr(Api):
 
         self.logger.info(f"Radarr add movie request: {json.dumps(data, indent=2)}")
         return self._make_request("POST", "movie", data=data)
+
+    def delete_media(self, id: int) -> APIResponse:
+
+        self.logger.info(f"Deleting Radarr movie with Radarr ID: {id}")
+        return self._make_request("DELETE", f"movie/{id}")
+
+
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the Radarr provider.
+        """
+        return {
+            "enabled": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable or disable Radarr integration."},
+            "url": {"value": "http://radarr:7878", "type": SettingType.URL, "description": "Radarr server URL", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Radarr API key", "required": True},
+            "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Radarr Default quality profile ID"},
+            "root_dir_path": {"value": "/movies", "type": SettingType.STRING, "description": "Root directory path for Radarr"},
+            "base_provider": {"value": "request", "type": SettingType.STRING, "show": False, "description": "Base Provider Type."},
+        }

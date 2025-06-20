@@ -11,8 +11,9 @@ import asyncio
 import aiohttp # For async HTTP requests in the caching task
 from peewee import fn
 from services.models import ItemsFiltered, LibraryUser, Media # Import Media model
-from services.radarr import Radarr # Keep Radarr import
-from services.sonarr import Sonarr
+from providers.radarr import RadarrProvider 
+from providers.sonarr import SonarrProvider
+from providers.jellyseerr import JellyseerrProvider # Import JellyseerrProvider
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import DiscovarrScheduler
@@ -25,7 +26,7 @@ from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
 from providers.gemini import GeminiProvider # Keep GeminiProvider import
-from providers.trakt import TraktProvider # Import TraktProvider
+from providers.trakt import TraktProvider 
 
 class Discovarr:
     """
@@ -89,6 +90,10 @@ class Discovarr:
         self.trakt_client_id = None
         self.trakt_client_secret = None
         self.trakt_redirect_uri = None
+        self.jellyseerr_enabled = None
+        self.jellyseerr_url = None
+        self.jellyseerr_api_key = None
+        self.jellyseerr_default_user = None
         # self.trakt_access_token = None # Access token might be managed via OAuth flow
         self.auto_media_save = None
         self.system_prompt = None 
@@ -105,6 +110,7 @@ class Discovarr:
         self.gemini = None
         self.ollama = None
         self.trakt = None # Initialize Trakt service instance
+        self.jellyseerr = None # Initialize Jellyseerr service instance
         self.llm_service = None # Initialize LLMService instance
         self.tmdb = None
         self.research_service = None # Initialize ResearchService instance
@@ -148,10 +154,12 @@ class Discovarr:
         self.jellyfin_enable_history = self.settings.get("jellyfin", "enable_history")
         self.jellyfin_url = self.settings.get("jellyfin", "url")
         self.jellyfin_api_key = self.settings.get("jellyfin", "api_key")
+        self.radarr_enabled = self.settings.get("radarr", "enabled")
         self.radarr_url = self.settings.get("radarr", "url")
         self.radarr_api_key = self.settings.get("radarr", "api_key")
         self.radarr_default_quality_profile_id = self.settings.get("radarr", "default_quality_profile_id")
         self.radarr_root_dir_path = self.settings.get("radarr", "root_dir_path")
+        self.sonarr_enabled = self.settings.get("sonarr", "enabled")
         self.sonarr_url = self.settings.get("sonarr", "url")
         self.sonarr_api_key = self.settings.get("sonarr", "api_key")
         self.sonarr_default_quality_profile_id = self.settings.get("sonarr", "default_quality_profile_id")
@@ -171,6 +179,10 @@ class Discovarr:
         self.trakt_client_id = self.settings.get("trakt", "client_id")
         self.trakt_client_secret = self.settings.get("trakt", "client_secret")
         self.trakt_redirect_uri = self.settings.get("trakt", "redirect_uri")
+        self.jellyseerr_enabled = self.settings.get("jellyseerr", "enabled")
+        self.jellyseerr_url = self.settings.get("jellyseerr", "url")
+        self.jellyseerr_api_key = self.settings.get("jellyseerr", "api_key")
+        self.jellyseerr_default_user = self.settings.get("jellyseerr", "default_user")
         self.tmdb_api_key = self.settings.get("tmdb", "api_key")
         self.system_prompt = self.settings.get("app", "system_prompt")
         
@@ -193,10 +205,9 @@ class Discovarr:
         if self.ollama_enabled:
             self.enabled_providers["llm"].append("ollama")   # Use string literal
 
-        # Radarr and Sonarr are "enabled" if their URL and API key are configured
-        if self.radarr_url and self.radarr_api_key:
+        if self.radarr_enabled:
             self.enabled_providers["request"].append("radarr")
-        if self.sonarr_url and self.sonarr_api_key:
+        if self.sonarr_enabled:
             self.enabled_providers["request"].append("sonarr")
             
         # Log enabled providers for each category
@@ -218,6 +229,7 @@ class Discovarr:
         self.plex = None # Reset before potential re-init
         self.jellyfin = None # Reset before potential re-init
         self.trakt = None # Reset before potential re-init
+        self.jellyseerr = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_api_key:
              self.plex = PlexProvider(
@@ -241,15 +253,18 @@ class Discovarr:
             self.logger.warning("Jellyfin is enabled but URL or API key is missing. Jellyfin service not initialized.")
         else:
             self.logger.info("Jellyfin integration is disabled.")
-        self.logger.debug(f"Inspecting 'Radarr' in reload_configuration: {Radarr}") # New debug
-        self.radarr = Radarr(
-            url=self.radarr_url,
-            api_key=self.radarr_api_key,
-        )
-        self.sonarr = Sonarr(
-            url=self.sonarr_url,
-            api_key=self.sonarr_api_key,
-        )
+
+        if self.radarr_enabled and self.radarr_url and self.radarr_api_key:
+            self.radarr = RadarrProvider(
+                url=self.radarr_url,
+                api_key=self.radarr_api_key,
+            )
+            
+        if self.sonarr_enabled and self.sonarr_url and self.sonarr_api_key:
+            self.sonarr = SonarrProvider(
+                url=self.sonarr_url,
+                api_key=self.sonarr_api_key,
+            )
         if self.gemini_enabled and self.gemini_api_key:
             self.gemini = GeminiProvider(
                 gemini_api_key=self.gemini_api_key
@@ -282,6 +297,18 @@ class Discovarr:
             # you might adjust TraktProvider's __init__ to not auto-authenticate
             # or provide a method to check auth status.
         else:
+            self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
+
+        if self.jellyseerr_enabled and self.jellyseerr_url and self.jellyseerr_api_key:
+            self.jellyseerr = JellyseerrProvider(
+                url=self.jellyseerr_url,
+                api_key=self.jellyseerr_api_key
+            )
+            self.logger.info("Jellyseerr service initialized.")
+        elif self.jellyseerr_enabled:
+            self.logger.warning("Jellyseerr is enabled but URL or API key is missing. Jellyseerr service not initialized.")
+        else:
+            self.logger.info("Jellyseerr integration is disabled.")
             self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
 
@@ -322,10 +349,14 @@ class Discovarr:
             if not self.plex_api_key:
                 raise ValueError("Plex API token is required when Plex integration is enabled.")
 
-        if self.radarr_url and not self.radarr_api_key:
-            raise ValueError("Both Radarr URL and API key are required if Radarr URL is provided.")
-        if self.sonarr_url and not self.sonarr_api_key:
-            raise ValueError("Both Sonarr URL and API key are required if Sonarr URL is provided.")
+        if self.radarr_enabled:
+            if self.radarr_url and not self.radarr_api_key:
+                raise ValueError("Both Radarr URL and API key are required if Radarr URL is provided.")
+            
+        if self.sonarr_enabled:
+            if self.sonarr_url and not self.sonarr_api_key:
+                raise ValueError("Both Sonarr URL and API key are required if Sonarr URL is provided.")
+            
         if self.gemini_enabled:
             if self.gemini_api_key:
                 raise ValueError("Gemini API key is required if a Gemini model is specified.")
@@ -337,6 +368,13 @@ class Discovarr:
             if not self.trakt_client_id:
                 raise ValueError("Trakt Client ID is required when Trakt integration is enabled.")
             if not self.trakt_client_secret:
+                raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
+        
+        if self.jellyseerr_enabled:
+            if not self.jellyseerr_url:
+                raise ValueError("Jellyseerr URL is required when Jellyseerr integration is enabled.")
+            if not self.jellyseerr_api_key:
+                raise ValueError("Jellyseerr API key is required when Jellyseerr integration is enabled.")
                 raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
    
     def get_prompt(self, limit: int, media_name: Optional[str] = None, template_string: Optional[str] = None) -> str:
@@ -948,22 +986,67 @@ class Discovarr:
         #self.logger.debug(f"Sync Watch History Results: {json.dumps(all_users_data, indent=2)}")
         return all_users_data
 
-    def request_media(self, tmdb_id: str, media_type: str, quality_profile_id: Optional[int], save_default: Optional[bool] = False) -> Optional[Dict[str, Any]]:
+    def request_media(self, media_type: str, quality_profile_id: Optional[int], save_default: Optional[bool] = False, title: Optional[str] = None, tmdb_id: Optional[str] = None) -> APIResponse:
         """
         Request media (movie or TV show) using TMDB ID and media type.
+        Prioritizes Jellyseerr if configured, otherwise falls back to Radarr/Sonarr.
 
         Args:
             tmdb_id (str): The TMDB ID of the media
             media_type (str): Type of media to request ('tv' or 'movie')
             quality_profile_id (Optional[int]): The quality profile ID selected by the user.
-            save_default (Optional[bool]): Whether to save the selected quality_profile_id as the default.
+                                                For Jellyseerr, this is used as target_profile_id.
+            save_default (Optional[bool]): Whether to save the selected quality_profile_id as the default
+                                           for the active request provider (Jellyseerr, Radarr, or Sonarr).
 
         Returns:
-            Optional[Dict[str, Any]]: JSON response from the API or None on error
+            APIResponse: Response from the request provider.
         """
-        self.logger.info(f"Requesting {media_type} with TMDB ID: {tmdb_id}")
-        
+        self.logger.info(f"Requesting {media_type} with TMDB ID: {tmdb_id}, QP ID: {quality_profile_id}, Save Default: {save_default}")
+
+        if self.jellyseerr_enabled:
+            self.logger.info("Jellyseerr is configured, attempting request via Jellyseerr.")
+            
+            # Handle saving the default quality profile ID for Jellyseerr
+            if save_default and quality_profile_id is not None:
+                if media_type == "movie":
+                    self.logger.info(f"Saving Jellyseerr default Radarr quality profile ID: {quality_profile_id}")
+                    self.settings.set("jellyseerr", "default_radarr_quality_profile_id", quality_profile_id)
+                elif media_type == "tv":
+                    self.logger.info(f"Saving Jellyseerr default Sonarr quality profile ID: {quality_profile_id}")
+                    self.settings.set("jellyseerr", "default_sonarr_quality_profile_id", quality_profile_id)
+
+            add_opts = {}
+            if self.jellyseerr_default_user:
+                self.logger.info(f"Attempting to find Jellyseerr user ID for displayName: {self.jellyseerr_default_user}")
+                user_lookup_response = self.jellyseerr.get_users(displayName=self.jellyseerr_default_user)
+                if user_lookup_response.success and user_lookup_response.data and isinstance(user_lookup_response.data, list) and len(user_lookup_response.data) > 0:
+                    user_data_item = user_lookup_response.data[0]
+                    if isinstance(user_data_item, dict) and user_data_item.get("id"):
+                        add_opts["user_id"] = user_data_item.get("id")
+                        self.logger.info(f"Found Jellyseerr user ID: {add_opts['user_id']} for {self.jellyseerr_default_user}")
+                    else:
+                        self.logger.warning(f"Jellyseerr user '{self.jellyseerr_default_user}' found, but ID is missing or data format unexpected: {user_data_item}")
+                elif user_lookup_response.success and (not user_lookup_response.data or (isinstance(user_lookup_response.data, list) and len(user_lookup_response.data) == 0)):
+                    self.logger.warning(f"Jellyseerr user '{self.jellyseerr_default_user}' not found.")
+                else: # Failed lookup
+                    self.logger.warning(f"Could not find Jellyseerr user ID for displayName: {self.jellyseerr_default_user}. Error: {user_lookup_response.message}")
+            
+            jellyseerr_response = self.jellyseerr.add_media(
+                tmdb_id=tmdb_id,
+                media_type=media_type,
+                quality_profile_id=quality_profile_id,
+                add_options=add_opts
+            )
+            self.logger.debug(f"Jellyseerr Add Media Response: {jellyseerr_response.data if jellyseerr_response else 'None'}")
+            return jellyseerr_response
+
+        # Fallback to Radarr/Sonarr if Jellyseerr is not configured
+        self.logger.info("Jellyseerr not configured or request not handled by Jellyseerr, proceeding with Radarr/Sonarr.")
+
         actual_quality_profile_id_to_use = quality_profile_id
+        request_response: Optional[APIResponse] = None
+
         if media_type == "movie":
             if not actual_quality_profile_id_to_use: # Handles None or 0
                 actual_quality_profile_id_to_use = self.radarr_default_quality_profile_id
@@ -971,10 +1054,9 @@ class Discovarr:
             if save_default and quality_profile_id is not None: # Use the user-selected profile ID
                 self.logger.info(f"Saving Radarr default quality profile ID: {quality_profile_id}")
                 self.settings.set("radarr", "default_quality_profile_id", quality_profile_id)
-                # self.radarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.radarr.add_movie(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.request_only, root_dir_path=self.radarr_root_dir_path)
-            self.logger.debug(f"Radarr Add Movie Response: {json.dumps(request.data, indent=2)}")
+            request_response = self.radarr.add_media(tmdb_id=int(tmdb_id), quality_profile_id=actual_quality_profile_id_to_use, search_for_movie=not self.request_only, root_dir_path=self.radarr_root_dir_path)
+            self.logger.debug(f"Radarr Add Movie Response: {request_response.data if request_response else 'None'}")
         elif media_type == "tv":
             if not actual_quality_profile_id_to_use: # Handles None or 0
                 actual_quality_profile_id_to_use = self.sonarr_default_quality_profile_id
@@ -982,46 +1064,59 @@ class Discovarr:
             if save_default and quality_profile_id is not None: # Use the user-selected profile ID
                 self.logger.info(f"Saving Sonarr default quality profile ID: {quality_profile_id}")
                 self.settings.set("sonarr", "default_quality_profile_id", quality_profile_id)
-                # self.sonarr_default_quality_profile_id will be updated on next reload_configuration by settings service
 
-            request = self.sonarr.add_series(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.request_only, root_dir_path=self.sonarr_root_dir_path)
+            request_response = self.sonarr.add_media(tmdb_id=tmdb_id, quality_profile_id=actual_quality_profile_id_to_use, search_for_missing=not self.request_only, root_dir_path=self.sonarr_root_dir_path)
+            self.logger.debug(f"Sonarr Add Series Response: {request_response.data if request_response else 'None'}")
         else:
             self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
-            return None
+            return APIResponse(success=False, message=f"Invalid media type: {media_type}", status_code=400)
         
-        return request
+        return request_response
+
     def get_quality_profiles(self, media_type: str) -> Optional[List[Dict[str, Any]]]:
         """
-        Get quality profiles from either Radarr or Sonarr based on media type.
+        Get quality profiles for a specific media type.
+        Prioritizes Jellyseerr if configured, otherwise falls back to Radarr/Sonarr.
 
         Args:
             media_type (str): Type of media ('tv' or 'movie')
 
         Returns:
             Optional[List[Dict[str, Any]]]: List of simplified quality profiles or None on error.
-            Each profile contains:
-                - id: The profile ID
-                - name: The profile name
         """
         self.logger.info(f"Retrieving quality profiles for {media_type}")
+        profiles_response: Optional[APIResponse] = None
+
         try:
-            if media_type == "movie":
-                profiles = self.radarr.get_quality_profiles(default_profile_id=self.radarr_default_quality_profile_id)
-            elif media_type == "tv":
-                profiles = self.sonarr.get_quality_profiles(default_profile_id=self.sonarr_default_quality_profile_id)
+            if self.jellyseerr_enabled and self.jellyseerr:
+                self.logger.info("Jellyseerr is enabled, fetching profiles through it.")
+                if media_type == "movie":
+                    profiles_response = self.jellyseerr.get_radarr_quality_profiles()
+                elif media_type == "tv":
+                    profiles_response = self.jellyseerr.get_sonarr_quality_profiles()
+                else:
+                    self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
+                    return None
             else:
-                self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
-                return None
-                
-            if profiles.success:
-                self.logger.info(f"Retrieved {len(profiles.data)} quality profiles")
-                return profiles.data
+                self.logger.info("Jellyseerr not enabled, fetching profiles from Radarr/Sonarr directly.")
+                if media_type == "movie" and self.radarr:
+                    profiles_response = self.radarr.get_quality_profiles(default_profile_id=self.radarr_default_quality_profile_id)
+                elif media_type == "tv" and self.sonarr:
+                    profiles_response = self.sonarr.get_quality_profiles(default_profile_id=self.sonarr_default_quality_profile_id)
+                else:
+                    self.logger.error(f"Invalid media type '{media_type}' or required provider not configured.")
+                    return None
+
+            if profiles_response and profiles_response.success:
+                self.logger.info(f"Retrieved {len(profiles_response.data)} quality profiles for {media_type}")
+                return profiles_response.data
             else:
-                self.logger.error(f"No quality profiles found for {media_type}")
+                error_message = profiles_response.message if profiles_response else "Provider not available or call failed."
+                self.logger.error(f"No quality profiles found for {media_type}. Reason: {error_message}")
                 return None
                 
         except Exception as e:
-            self.logger.error(f"Error retrieving quality profiles: {e}", exc_info=True)
+            self.logger.error(f"Error retrieving quality profiles for {media_type}: {e}", exc_info=True)
             return None
 
     def get_users(self) -> Optional[List[LibraryUser]]:

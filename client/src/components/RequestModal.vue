@@ -79,7 +79,7 @@ const handleRequest = async () => {
     console.log('Sending POST request with payload:', requestPayload);
     
     const response = await fetch(
-      `${config.apiUrl}/request/${props.media.tmdb_id}`, // No query params here
+      `${config.apiUrl}/request/${props.media.tmdb_id}/${props.media.title}`, // No query params here
       { 
         method: 'POST',
         headers: {

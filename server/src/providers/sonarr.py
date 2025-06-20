@@ -1,10 +1,13 @@
 import json
 import logging
 from typing import Optional, Dict, Any, List
-from .response import APIResponse # Import the APIResponse class
-from .api import Api # Import the new Api class
+from base.request_provider_base import RequestProviderBase
+from services.response import APIResponse
+from services.models import SettingType # Import SettingType
 
-class Sonarr(Api):
+class SonarrProvider(RequestProviderBase):
+    PROVIDER_NAME = "sonarr"
+
     def __init__(self, url: str, api_key: str):
         """Initialize Sonarr client.
         
@@ -16,7 +19,7 @@ class Sonarr(Api):
         self.logger = logging.getLogger(__name__)
         # self.url, self.api_key, and self.headers are now managed by the Api base class
 
-    def lookup_series(self, tmdb_id: str) -> APIResponse:
+    def lookup_media(self, tmdb_id: str) -> APIResponse:
         """Look up series details using IMDB ID.
         
         Args:
@@ -50,7 +53,7 @@ class Sonarr(Api):
         api_response.data = api_response.data[0]
         return api_response
 
-    def add_series(self, tmdb_id: str, quality_profile_id: int, root_dir_path: str = "/tv", 
+    def add_media(self, tmdb_id: str, quality_profile_id: int, root_dir_path: str = "/tv", 
                   language_profile_id: int = 1, season_folder: bool = True, 
                   monitor: bool = True, search_for_missing: bool = True) -> APIResponse:
         """Add a series to Sonarr using IMDB ID.
@@ -67,7 +70,7 @@ class Sonarr(Api):
         Returns:
             APIResponse: An APIResponse object. If successful, `data` contains the Sonarr response.
         """
-        lookup_response = self.lookup_series(tmdb_id)
+        lookup_response = self.lookup_media(tmdb_id)
         if not lookup_response.success:
             return lookup_response # Propagate error from lookup
 
@@ -93,6 +96,10 @@ class Sonarr(Api):
 
         self.logger.info(f"Sonarr request: {json.dumps(data, indent=2)}")
         return self._make_request("POST", "series", data=data)
+
+    def delete_media(self, id: str) -> APIResponse:
+        self.logger.info(f"Deleting Sonarr series with Sonarr ID: {id} ")
+        return self._make_request("DELETE", f"series/{id}")
 
     def get_quality_profiles(self, default_profile_id: Optional[int] = None) -> APIResponse:
         """Get all quality profiles configured in Sonarr with their allowed qualities.
@@ -132,3 +139,17 @@ class Sonarr(Api):
             })
             
         return APIResponse(success=True, data=simplified_profiles, status_code=profiles_response.status_code)
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the Sonarr provider.
+        """
+        return {
+            "enabled": {"value": True, "type": SettingType.BOOLEAN, "description": "Enable or disable Sonarr integration."},
+            "url": {"value": "http://sonarr:8989", "type": SettingType.URL, "description": "Sonarr server URL", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Sonarr API key", "required": True},
+            "default_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Sonarr Default quality profile ID"}, # Corrected description from Radarr to Sonarr
+            "root_dir_path": {"value": "/tv", "type": SettingType.STRING, "description": "Root directory path for Sonarr"},
+            "base_provider": {"value": "request", "type": SettingType.STRING, "show": False, "description": "Base Provider Type."},
+        }
