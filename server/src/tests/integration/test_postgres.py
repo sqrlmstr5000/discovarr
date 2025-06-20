@@ -1,7 +1,7 @@
 import pytest
 import os
 import logging
-from pathlib import Path # Import Path for monkeypatching
+from pathlib import Path
 from peewee import PeeweeException, PostgresqlDatabase
 
 from services.database import Database
@@ -131,3 +131,16 @@ def test_postgres_settings_initialization(postgres_db_setup):
         "Default 'app.recent_limit' value should match"
 
     logger.info("PostgreSQL settings initialization test passed.")
+
+@pytest.mark.integration_live # Mark this as a live integration test
+def test_postgres_backup(postgres_db_setup):
+    """
+    Tests that the PostgreSQL database can be backed up using BackupService.
+    """
+    db_instance = postgres_db_setup # Get the initialized Database instance from the fixture
+    assert db_instance.db_type == "postgres", "Database type should be PostgreSQL for backup test"
+
+    backup_path_str = db_instance.backup_service.backup_db(name="test_backup")
+
+    assert backup_path_str is not None, "Backup should return a valid path on success"
+    assert Path(backup_path_str).exists(), "Backup file should exist at the returned path"
