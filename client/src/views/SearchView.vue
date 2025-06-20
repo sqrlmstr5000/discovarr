@@ -485,6 +485,12 @@ const handleUpdateMediaName = (newName) => {
 const handleSelectExamplePrompt = (prompt) => {
   searchName.value = prompt.title;
   searchText.value = prompt.text;
+  // Reset other relevant states as if it's a new search
+  currentLoadedSearchId.value = null; // This is the key fix
+  editableMediaName.value = ''; // Clear any previous media name context
+  searchStore.clearSearchResults(); // Clear any existing results
+  previewResult.value = ''; // Clear preview
+  previewError.value = '';
   showExamplePromptsModal.value = false; // Close modal after selection
 };
 </script>
