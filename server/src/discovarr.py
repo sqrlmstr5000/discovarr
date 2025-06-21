@@ -847,6 +847,14 @@ class Discovarr:
                 self.logger.warning("No Jellyfin users found to sync watch history.")
             else:
                 self.logger.info(f"Starting Jellyfin watch history sync for {len(jellyfin_users)} user(s).")
+                limit_for_provider = None 
+                history_count = self.db.get_media_count_for_provider("jellyfin")
+                if history_count == 0:
+                    self.logger.debug(f"Jellfin watch history count={history_count}, syncing all history.")
+                else:
+                    self.logger.debug(f"Jellyfin watch history count={history_count}, syncing last {self.recent_limit} items from watch history.")
+                    limit_for_provider =self.recent_limit
+
                 for user_data in jellyfin_users:
                     user_name = user_data.name # user_data is LibraryUser
                     user_id = user_data.id # Access .id
@@ -857,15 +865,7 @@ class Discovarr:
 
                     # Ensure user is in the results dict, even if no items are found later
                     all_users_data.setdefault(user_name, {"id": user_id, "recent_titles": []})
-
-                    # TODO: Fix to check media table instead
-                    history_count = self.db.get_media_count_for_provider("jellyfin")
-                    limit_for_provider = None 
-                    if history_count == 0:
-                        self.logger.debug(f"Jellfin watch history count={history_count}, syncing all history.")
-                    else:
-                        self.logger.debug(f"Jellyfin watch history count={history_count}, syncing last {self.recent_limit} items from watch history.")
-                        limit_for_provider =self.recent_limit
+                    
                     recently_watched_items = self.jellyfin.get_recently_watched(
                         user_id=user_id, limit=limit_for_provider
                     )
@@ -1311,7 +1311,6 @@ class Discovarr:
         except Exception as e:
             self.logger.error(f"Error during the process of deleting all watch history items: {e}", exc_info=True)
             return {"success": False, "message": f"Failed to delete all watch history items: {e}", "status_code": 500}
-
 
     def get_media_by_field(self, col_name: str) -> List[Any]:
         """

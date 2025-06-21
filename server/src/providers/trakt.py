@@ -168,7 +168,7 @@ class TraktProvider(LibraryProviderBase):
                 self.logger.info("Trakt authorization details saved to settings.")
 
             self.logger.info('Authentication successful - authorization stored.')
-            self.logger.debug('Authorization details: %r' % self.authorization)
+            self.logger.debug(f"Authorization details: {json.dumps(self.authorization)}")
 
             self.is_authenticating.notify_all()
 
@@ -271,21 +271,29 @@ class TraktProvider(LibraryProviderBase):
         get_kwargs = {
             'media': None,  # All types: movies, episodes
             'extended': 'full',
-            'pagination': False  # Fetch a single page of results
         }
         if limit is None:
-            # With pagination=False and per_page=None, Trakt API's default page limit applies (e.g., 10 items).
+            # If limit is None, fetch all items by letting the library paginate
             get_kwargs['per_page'] = None
         else:
-            # Fetch up to 'limit' items.
-            get_kwargs['per_page'] = limit
-            # page will use its default of None (first page)
+            # Fetch up to 'limit' items, using a reasonable page size
+            # Trakt API default per_page is 10, max is 1000. Using 100 as a good chunk size.
+            get_kwargs['per_page'] = min(limit, 100)
 
         try:
             # Fetch combined history (movies and episodes)
-            history_items_iter = Trakt[f"users/{user_id}/history"].get(**get_kwargs)
-            # Convert iterable to list of trakt.Object instances
-            raw_watched_items = list(history_items_iter) if history_items_iter else []
+            endpoint = f"users/{user_id}/history"
+            self.logger.debug(f"Get recently watched from endpoint: {endpoint} with params: {get_kwargs}")
+            
+            history_items_iter = Trakt[endpoint].get(**get_kwargs) # This is now an iterable that handles pagination
+            
+            raw_watched_items = []
+            count = 0
+            for item in history_items_iter:
+                raw_watched_items.append(item)
+                count += 1
+                if limit is not None and count >= limit:
+                    break # Stop once the desired limit is reached
             #
             # Leave for manual debugging
             #
@@ -317,12 +325,15 @@ class TraktProvider(LibraryProviderBase):
         favorite_items = []
         try:
             # Fetch ratings (Trakt ratings are 1-10: int)
-            rated_items_iter = Trakt[f"users/{user_id}/ratings"].get(
-                media=None, # All types: movies, episodes
-                extended='full',
-                per_page=limit,
-                pagination=False
-                )
+            endpoint = f"users/{user_id}/ratings"
+            get_kwargs = {
+                'media': None, # All types: movies, episodes
+                'extended': 'full',
+                'per_page': limit,
+                'pagination': False
+            }
+            self.logger.debug(f"Get recently watched from endpoint: {endpoint} with params: {get_kwargs}")
+            rated_items_iter = Trakt[endpoint].get(**get_kwargs)
 
             if rated_items_iter:
                 raw_favorite_items = list(rated_items_iter)
@@ -352,6 +363,7 @@ class TraktProvider(LibraryProviderBase):
 
         processed_media_map: Dict[str, ItemsFiltered] = {}
 
+        self.logger.debug(f"Total raw items: {len(items)}")
         for item in items:
             name: Optional[str] = None
             tmdb_id: Optional[str] = None
@@ -409,6 +421,7 @@ class TraktProvider(LibraryProviderBase):
                     is_favorite=is_favorite_val,
                 )
 
+        self.logger.debug(f"Total filtered items: {len(processed_media_map)}")
         if attribute_filter and attribute_filter.lower() == "name":
             return [pm_item.name for pm_item in processed_media_map.values() if pm_item.name]
         
