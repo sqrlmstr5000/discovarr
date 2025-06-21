@@ -122,7 +122,7 @@ The original intent was to write a script to generate a prompt that gave me reco
 ## Docker Compose Example
 
 - This example `compose.yml` demonstrates the minimum config for the Discovarr container.
-- Environment variables can be set according to your specific setup and will populate Settings on first launch.
+- Environment variables can be set according to your specific setup and will update populate Settings. ENVs will always overwrite Settings in the database. 
 - Volumes used in the container are `/config` and `/backups`. Map `/config` to a path on your host to persist the database between container restarts. 
 - The container does not run as root and uses a `discovarr` user and group with UID/GID `1884` by default. The `entrypoint.sh` script will create this user/group within the container and ensure proper directory permissions. 
 - If you want to change the `1884` UID/GID use the `PUID` and `PGID` environment variables. 
