@@ -163,8 +163,6 @@ class JellyfinProvider(LibraryProviderBase):
                 self.logger.error("Jellyfin URL, Key, and User ID are required.")
                 return None
 
-            limit = limit if limit is not None else self.limit  # Use provided limit or default
-
             endpoint = urljoin(self.jellyfin_url, f"/Users/{user_id}/Items")
             headers = {
                 "Authorization": self.jellyfin_auth,
@@ -182,6 +180,8 @@ class JellyfinProvider(LibraryProviderBase):
 
             if limit is not None:
                 params["Limit"] = limit
+
+            self.logger.debug(f"Get recently watched from endpoint: {endpoint} with params: {params}")
 
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
@@ -233,8 +233,7 @@ class JellyfinProvider(LibraryProviderBase):
                 "SortOrder": "Ascending",
                 "enableUserData": "true", # Important to check UserData.IsFavorite
             }
-            self.logger.debug(f"Jellyfin get_favorites endpoint: {endpoint}")
-            self.logger.debug(f"Jellyfin get_favorites params: {params}")
+            self.logger.debug(f"Get favorites from endpoint: {endpoint} with params: {params}")
 
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
@@ -283,6 +282,7 @@ class JellyfinProvider(LibraryProviderBase):
         external_id_cache: Dict[str, Optional[Dict[str, str]]] = {} # Cache for external IDs within this call
         processed_media_map: Dict[str, ItemsFiltered] = {}
 
+        self.logger.debug(f"Total raw items: {len(items)}")
         for item in items:
             user_data = item.get("UserData", {})
 
@@ -366,6 +366,7 @@ class JellyfinProvider(LibraryProviderBase):
                 return [item.name for item in processed_media_map.values() if item.name]
             # Potentially handle other attribute_filters here if needed, or log warning
             self.logger.warning(f"Unsupported attribute_filter '{attribute_filter}' for Jellyfin. Returning full objects.")
+        self.logger.debug(f"Total filtered items: {len(processed_media_map)}")
         return list(processed_media_map.values())
     
     def get_all_items(self) -> Optional[List[Dict[str, Any]]]:

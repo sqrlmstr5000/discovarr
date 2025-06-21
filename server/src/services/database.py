@@ -116,6 +116,7 @@ class Database:
             self.logger.info(f"Initialized SQLite database at {db_path}")
 
         database.initialize(current_db_instance)
+        self.db = database # Expose the peewee database proxy
         try:
             database.connect(reuse_if_open=True)
         except Exception as e:
@@ -502,7 +503,7 @@ class Database:
         except WatchHistory.DoesNotExist:
             return None
 
-    def get_watch_history(self, limit: Optional[int] = 10, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, processed: Optional[bool] = None) -> List[Dict[str, Any]]:
+    def get_watch_history(self, limit: Optional[int] = 10, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, processed: Optional[bool] = None, media_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get watch history, optionally filtered by date range.
         
@@ -525,6 +526,8 @@ class Database:
                 query = query.where(WatchHistory.last_played_date <= end_date)
             if processed is not None:
                 query = query.where(WatchHistory.processed == processed)
+            if media_id:
+                query = query.where(WatchHistory.media_id == media_id)
             if limit is not None:
                 query = query.limit(limit)
             return [model_to_dict(h) for h in query]

@@ -215,47 +215,6 @@ async def get_all_provider_users(
         raise HTTPException(status_code=503, detail="No library providers enabled or error fetching users.")
     return users
 
-# --- Plex Endpoints ---
-@api_app.get("/plex/recently_watched")
-async def plex_recently_watched(
-    limit: Optional[int] = None,
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve recently watched items from the Plex API for the default user.
-    """
-    return discovarr.plex_get_recently_watched(limit)
-
-@api_app.get("/plex/recently_watched_filtered")
-async def plex_recently_watched_filtered(
-    limit: Optional[int] = None,
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve filtered recently watched items from the Plex API for the default user.
-    """
-    items = discovarr.plex_get_recently_watched_filtered(limit)
-    if items is None:
-         # This could happen if Plex is not configured or if there's an API error
-        raise HTTPException(status_code=503, detail="Plex service unavailable or error fetching recently watched items.")
-    # The filtered items are already PlexMediaItem dataclasses, which FastAPI can serialize
-    # If you specifically need *only* the names, you would call get_items_filtered with attribute_filter="name"
-    # but the Jellyfin endpoint returns the full filtered objects, so we'll match that.
-    return items
-
-@api_app.get("/plex/all")
-async def plex_all(
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve all movie and TV show items from the Plex library, filtered.
-    """
-    items = discovarr.plex_get_all_items_filtered()
-    if items is None:
-         # This could happen if Plex is not configured or if there's an API error
-        raise HTTPException(status_code=503, detail="Plex service unavailable or error fetching all items.")
-    return items # Returns List[PlexMediaItem] or List[str]
-
 @api_app.get("/sync_watch_history")
 async def sync_watch_history(
     limit: Optional[int] = None,
@@ -265,47 +224,6 @@ async def sync_watch_history(
     Endpoint to retrieve recently watched items from the Jellyfin API.
     """
     return await discovarr.sync_watch_history()
-
-@api_app.get("/jellyfin/recently_watched")
-async def jellyfin_recently_watched(
-    limit: Optional[int] = None,
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve recently watched items from the Jellyfin API.
-    """
-    return discovarr.jellyfin_get_recently_watched(limit)
-
-@api_app.get("/jellyfin/recently_watched_filtered")
-async def jellyfin_recently_watched_filtered(
-    limit: Optional[int] = None,
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve recently watched items from the Jellyfin API.
-    """
-    return discovarr.jellyfin_get_recently_watched_filtered(limit)
-
-@api_app.get("/jellyfin/all")
-async def jellyfin_all(
-    limit: Optional[int] = None,
-    discovarr: Discovarr = Depends(get_discovarr),
-):
-    """
-    Endpoint to retrieve all items from the Jellyfin API.
-    """
-    # The Jellyfin endpoint returns a string, which is inconsistent with the filtered methods.
-    # Let's make the Plex endpoint return the filtered objects for consistency with other filtered methods.
-    # If a string is truly needed, a separate endpoint or parameter could be added.
-    # For now, mirroring the *filtered* output structure.
-    items = discovarr.jellyfin.get_all_items_filtered() # This returns List[ItemsFiltered] or List[str]
-    if items is None:
-         # This could happen if Jellyfin is not configured or if there's an API error
-        raise HTTPException(status_code=503, detail="Jellyfin service unavailable or error fetching all items.")
-    # If the original Jellyfin endpoint truly returned a string, this would need adjustment.
-    # Assuming the goal is the filtered list of objects/names.
-    # The original endpoint name `jellyfin_get_all_videos_to_string` suggests it returned a string.
-    return items # Returning the list of objects/names as per get_items_filtered output
 
 # --- Trakt Endpoints ---
 @api_app.post("/trakt/authenticate")

@@ -280,6 +280,7 @@ class PlexProvider(LibraryProviderBase):
 
         processed_media_map: Dict[str, ItemsFiltered] = {}
 
+        self.logger.debug(f"Total raw items: {len(items)}")
         for item in items:
             media_name: Optional[str] = None
             consolidated_media_id: Optional[str] = None 
@@ -384,6 +385,7 @@ class PlexProvider(LibraryProviderBase):
                     poster_url=poster_url_val
                 )
 
+        self.logger.debug(f"Total filtered items: {len(processed_media_map)}")
         if attribute_filter and attribute_filter.lower() == "name":
             return [pm_item.name for pm_item in processed_media_map.values()]
         else:

@@ -133,36 +133,39 @@ class SettingsService:
         
     def _initialize_settings(self) -> None:
         """
-        Create settings in database if they don't exist.
-        For each setting, checks environment variable {GROUP}_{NAME} in uppercase.
-        Falls back to value from DEFAULT_SETTINGS if env var not set.
+        Initializes settings in the database.
+        - Creates settings if they don't exist.
+        - Overwrites existing settings with values from environment variables if they are set.
         """
         import os
 
         for group, settings in SettingsService.DEFAULT_SETTINGS.items():
             for name, config in settings.items():
-                # Check environment variable first (e.g. JELLYFIN_URL for jellyfin.url)
+                # Check environment variable (e.g., JELLYFIN_URL for jellyfin.url)
                 env_var = f"{group.upper()}_{name.upper()}"
                 env_value = os.environ.get(env_var)
-                
-                if env_value is not None:
-                    self.logger.info(f"Using environment variable {env_var}")
 
-                try:
-                    Settings.get(Settings.group == group, Settings.name == name)
-                except Settings.DoesNotExist:
-                    self.logger.info(f"Creating setting {group}.{name} in database")
-                    Settings.create(
-                        group=group,
-                        name=name,
-                        # Use environment variable if set, otherwise use the default from config
-                        value=env_value if env_value is not None else config["value"],
-                        type=config["type"].value,
-                        description=config["description"],
-                        created_at=datetime.now(),
-                        updated_at=datetime.now()
-                    )
+                # Determine the value to use for creation
+                value_for_creation = env_value if env_value is not None else config["value"]
+
+                setting, created = Settings.get_or_create(
+                    group=group,
+                    name=name,
+                    defaults={
+                        'value': value_for_creation,
+                        'type': config["type"].value,
+                        'description': config["description"],
+                    }
+                )
+
+                if created:
                     self.logger.info(f"Created setting {group}.{name} with value from {'environment variable ' + env_var if env_value is not None else 'defaults'}")
+                elif env_value is not None and setting.value != env_value:
+                    # Setting existed, but env var has a different value. Overwrite.
+                    self.logger.info(f"Overwriting setting {group}.{name} with value from environment variable {env_var}")
+                    setting.value = env_value
+                    setting.updated_at = datetime.now()
+                    setting.save()
 
     def get(self, group: str, name: str) -> Optional[Any]:
         """Get a setting value with proper type conversion."""

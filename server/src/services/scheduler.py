@@ -65,13 +65,6 @@ class DiscovarrScheduler(Schedule):
         elif func_name == 'process_watch_history':
             # _create_process_function returns an async function directly.
             return self._create_process_function()
-        elif func_name == 'jellyfin_get_recently_watched':
-            # This is a synchronous function. AsyncIOScheduler will run it in an executor.
-            # It expects runtime kwargs (e.g., {'limit': value}) from Schedule.kwargs in DB.
-            def _jellyfin_runner(**runtime_kwargs):
-                self.logger.info(f"Executing scheduled 'jellyfin_get_recently_watched' with runtime_kwargs: {runtime_kwargs}")
-                return self.discovarr.jellyfin_get_recently_watched(limit=runtime_kwargs.get('limit'))
-            return _jellyfin_runner
         elif func_name == 'get_active_media':
             # Synchronous, expects no runtime args/kwargs.
             return self.discovarr.get_active_media
