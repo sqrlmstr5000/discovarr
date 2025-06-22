@@ -6,9 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0]() - 2025-06-22
 ### Added 
+- OpenAI integration
 - Jellyseer integration
 
 ### Changed
+- OpenAI provider now supports custom base URLs for API proxying.
 - Refactored Radarr and Sonarr into Providers of type "request"
 
 ## [1.1.2]() - 2025-06-21

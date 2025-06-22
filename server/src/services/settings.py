@@ -91,6 +91,7 @@ class SettingsService:
 
         # Delayed imports to prevent circular dependencies at module load time
         from providers.gemini import GeminiProvider
+        from providers.openai import OpenAIProvider
         from providers.ollama import OllamaProvider
         from providers.plex import PlexProvider
         from providers.jellyfin import JellyfinProvider
@@ -107,6 +108,7 @@ class SettingsService:
             RadarrProvider,
             SonarrProvider,
             GeminiProvider,
+            OpenAIProvider,
             OllamaProvider,
             PlexProvider,
             JellyfinProvider,

@@ -27,6 +27,7 @@ from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
 from providers.ollama import OllamaProvider # Changed from Ollama
 from providers.gemini import GeminiProvider # Keep GeminiProvider import
+from providers.openai import OpenAIProvider
 from providers.trakt import TraktProvider 
 
 class Discovarr:
@@ -85,6 +86,11 @@ class Discovarr:
         self.ollama_model = None # Initialize Ollama setting
         self.ollama_temperature = None # 
         self.tmdb_api_key = None
+        self.openai_enabled = None
+        self.openai_api_key = None
+        self.openai_base_url = None
+        self.openai_model = None
+        self.openai_temperature = None
         self.trakt_enabled = None
         self.trakt_enable_media = None # Trakt doesn't really have "media" in the same sense for exclusion, but history is key.
         self.trakt_enable_history = None
@@ -118,6 +124,7 @@ class Discovarr:
         self.sonarr = None
         self.gemini = None
         self.ollama = None
+        self.openai = None
         self.trakt = None # Initialize Trakt service instance
         self.jellyseerr = None # Initialize Jellyseerr service instance
         self.overseerr = None # Initialize Overseerr service instance
@@ -183,6 +190,11 @@ class Discovarr:
         self.ollama_base_url = self.settings.get("ollama", "base_url")
         self.ollama_model = self.settings.get("ollama", "model")
         self.ollama_temperature = self.settings.get("ollama", "temperature")
+        self.openai_enabled = self.settings.get("openai", "enabled")
+        self.openai_api_key = self.settings.get("openai", "api_key")
+        self.openai_base_url = self.settings.get("openai", "base_url")
+        self.openai_model = self.settings.get("openai", "model")
+        self.openai_temperature = self.settings.get("openai", "temperature")
         self.trakt_enabled = self.settings.get("trakt", "enabled")
         self.trakt_enable_media = self.settings.get("trakt", "enable_media") # Though less relevant for Trakt media exclusion
         self.trakt_enable_history = self.settings.get("trakt", "enable_history")
@@ -222,6 +234,8 @@ class Discovarr:
             self.enabled_providers["llm"].append("gemini")   # Use string literal
         if self.ollama_enabled:
             self.enabled_providers["llm"].append("ollama")   # Use string literal
+        if self.openai_enabled:
+            self.enabled_providers["llm"].append("openai")   # Use string literal
 
         if self.radarr_enabled:
             self.enabled_providers["request"].append("radarr")
@@ -306,6 +320,14 @@ class Discovarr:
         else:
             self.logger.info("Ollama integration is disabled.")
 
+        if self.openai_enabled and self.openai_api_key and self.openai_base_url:
+            self.openai = OpenAIProvider(
+                openai_api_key=self.openai_api_key,
+                openai_base_url=self.openai_base_url
+            )
+        else:
+            self.openai = None
+
         if self.trakt_enabled and self.trakt_client_id and self.trakt_client_secret:
             self.trakt = TraktProvider(
                 client_id=self.trakt_client_id,
@@ -353,6 +375,7 @@ class Discovarr:
             enabled_providers=self.enabled_providers,
             gemini_provider=self.gemini,
             ollama_provider=self.ollama,
+            openai_provider=self.openai,
             jellyfin_provider=self.jellyfin,
             plex_provider=self.plex,
             trakt_provider=self.trakt
@@ -396,6 +419,11 @@ class Discovarr:
         if self.ollama_enabled:
             if not self.ollama_base_url:
                 raise ValueError("Ollama Base URL is required when Ollama integration is enabled.")
+        if self.openai_enabled:
+            if not self.openai_api_key:
+                raise ValueError("OpenAI API key is required when OpenAI integration is enabled.")
+            if not self.openai_base_url:
+                raise ValueError("OpenAI Base URL is required when OpenAI integration is enabled.")
         
         if self.trakt_enabled:
             if not self.trakt_client_id:

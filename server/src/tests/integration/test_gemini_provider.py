@@ -1,6 +1,6 @@
 import os
 import unittest
-from typing import Any
+from typing import Any, Optional
 
 from providers.gemini import GeminiProvider # The class we are testing
 from tests.integration.base.base_live_llm_provider_tests import BaseLiveLlmProviderTests # The base test class
@@ -12,7 +12,7 @@ GEMINI_TEST_MODEL_ENV_VAR = "GEMINI_TEST_MODEL" # Optional, for overriding the d
 
 # Default model to use for tests if not overridden by environment variable
 # Using the default from GeminiProvider.get_default_settings()
-DEFAULT_GEMINI_TEST_MODEL = "gemini-2.5-flash-preview-04-17"
+DEFAULT_GEMINI_TEST_MODEL = "gemini-1.5-flash-latest"
 
 class TestGeminiProviderLive(BaseLiveLlmProviderTests):
     """
@@ -34,6 +34,16 @@ class TestGeminiProviderLive(BaseLiveLlmProviderTests):
 
     def _get_required_env_vars(self) -> list[str]:
         return [GEMINI_API_KEY_ENV_VAR]
+
+    def _get_generate_content_prompt_data(self) -> str:
+        """Return a simple string prompt for Gemini's _generate_content."""
+        return "Tell me a short, one-sentence joke."
+
+    def _get_embedding_model_name(self) -> str:
+        return "models/text-embedding-004"
+
+    def _get_embedding_dimensions(self) -> Optional[int]:
+        return 768
 
     # BaseLiveLlmProviderTests provides:
     # - asyncSetUp

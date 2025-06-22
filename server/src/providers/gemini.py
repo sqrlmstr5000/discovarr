@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import asyncio # For running sync code in async
 from google import genai
 from google.genai import types
-from services.models import Suggestion, SuggestionList
+from services.models import SuggestionList
 from base.llm_provider_base import LLMProviderBase
 from services.models import SettingType # Import SettingType from models
 

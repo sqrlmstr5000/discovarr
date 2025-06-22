@@ -1,117 +1,196 @@
 import json
 import logging
 from typing import Optional, Dict, Any, List
+from openai import AsyncOpenAI
 from pydantic import BaseModel
-from providers.openai import OpenAI
 
-class Suggestion(BaseModel):
-    title: str
-    description: str
-    similarity: str
-    mediaType: str
-    imdb_id: str
-    imdb_url: str
-    imdb_score: int
-    tmdb_url: str
-    tmdb_id: str
-    tvdb_id: str
-    rt_url: str
-    rt_score: int
-    poster_url: str
+from base.llm_provider_base import LLMProviderBase
+from services.models import SuggestionList, SettingType
 
-class OpenAi:
+class OpenAIProvider(LLMProviderBase):
     """
     A class to interact with the OpenAI API for finding similar media.
+    Conforms to the LLMProviderBase interface.
     """
+    PROVIDER_NAME = "openai"
 
-    def __init__(self, openai_model: str, openai_api_key: str):
+    def __init__(self, openai_api_key: str, openai_base_url: Optional[str] = "https://api.openai.com/v1"):
         """
-        Initializes the OpenAI class with API configurations.
+        Initializes the OpenAIProvider with API configurations.
 
         Args:
-            openai_model (str): The OpenAI model to use (e.g., "gpt-4-turbo-preview")
-            openai_api_key (str): The OpenAI API key
+            openai_api_key (str): The OpenAI API key.
+            openai_base_url (Optional[str]): The base URL for the OpenAI API.
+                                             Defaults to "https://api.openai.com/v1".
         """
-        # Setup Logging
         self.logger = logging.getLogger(__name__)
-
-        self.openai_model = openai_model
         self.openai_api_key = openai_api_key
-        self.logger.info("Initializing OpenAI class...")
-        self.logger.debug("OPENAI_MODEL: %s", self.openai_model)
-        self.logger.debug("OPENAI_API_KEY: %s", self.openai_api_key)
-
-        self.client = OpenAI(api_key=self.openai_api_key)
-
-    def get_similar_media(self, media_name: str, all_media: str) -> Optional[Dict[str, Any]]:
-        """
-        Uses the OpenAI API to find media similar to the given media name.
-
-        Args:
-            media_name (str): The name of the movie or TV show
-            all_media (str): List of media to exclude from recommendations
-
-        Returns:
-            dict: A dictionary containing the response from the OpenAI API, or None on error
-        """
-        if not self.openai_model:
-            self.logger.error("OpenAI Model is not configured.")
-            return None
+        self.logger.info("Initializing OpenAIProvider...")
 
         if not self.openai_api_key:
-            self.logger.error("OpenAI API Key is not configured.")
+            self.logger.error("OpenAI API Key is not configured. Cannot initialize client.")
+            self.client = None
+            return
+
+        self.client = AsyncOpenAI(api_key=self.openai_api_key, base_url=openai_base_url)
+
+    @property
+    def name(self) -> str:
+        """Returns the name of the LLM provider."""
+        return self.PROVIDER_NAME
+
+    async def _generate_content(
+        self,
+        model: str,
+        prompt_data: List[Dict[str, str]], # For OpenAI, prompt_data is a list of messages
+        system_prompt: Optional[str] = None, # System prompt is part of prompt_data for OpenAI
+        temperature: Optional[float] = 0.7,
+        response_format_details: Optional[Any] = None, # Pydantic model for response_model
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Generates content using the OpenAI API.
+        """
+        if not self.client:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': "OpenAI client is not initialized."}
+
+        try:
+            self.logger.debug(f"Sending request to OpenAI model {model} with messages: {prompt_data}")
+            
+            if response_format_details:
+                chat_completion_kwargs = {
+                    "model": model,
+                    "input": prompt_data,
+                    "temperature": temperature,
+                    "text_format": response_format_details,
+                }
+                response = await self.client.responses.parse(**chat_completion_kwargs)
+                content = json.loads(response.output_parsed)
+            else:
+                chat_completion_kwargs = {
+                    "model": model,
+                    "messages": prompt_data,
+                    "temperature": temperature,
+                }
+                response = await self.client.chat.completions.create(**chat_completion_kwargs)
+                content_str = response.choices[0].message.content
+                content = content_str
+
+            usage = response.usage
+            token_counts = {
+                'prompt_token_count': usage.prompt_tokens,
+                'candidates_token_count': usage.completion_tokens,
+                'thoughts_token_count': 0, # OpenAI doesn't have a direct 'thoughts' token count
+                'total_token_count': usage.total_tokens,
+            }
+            return {'success': True, 'content': content, 'token_counts': token_counts}
+        except json.JSONDecodeError as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API returned non-JSON or malformed JSON response: {content_str if 'content_str' in locals() else 'Response content not available'} - {e}"}
+        except Exception as e:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API general error: {e}"}
+
+    async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
+        """
+        Uses the OpenAI API to find media similar to the user's prompt, returning structured JSON.
+        """
+        if not self.client:
+            self.logger.error("OpenAI client is not initialized.")
+            return {'success': False, 'message': "OpenAI client is not initialized.", 'status_code': 500}
+
+        if system_prompt is None:
+            system_prompt = "You are a helpful assistant."
+
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': prompt}
+        ]
+
+        self.logger.debug(f"get_similar_media using prompt: {prompt} and system_prompt: {system_prompt}")
+
+        generation_result = await self._generate_content(
+            model=model,
+            prompt_data=messages,
+            temperature=temperature,
+            response_format_details=SuggestionList, # Pass the Pydantic model to indicate JSON output is desired
+            **kwargs
+        )
+
+        if not generation_result['success']:
+            self.logger.error(f"Failed to get similar media from OpenAI: {generation_result.get('message')}")
+            return {'success': False, 'message': generation_result.get('message', 'Generation failed'), 'status_code': 500}
+
+        self.logger.debug(f"OpenAI token usage for get_similar_media: {generation_result['token_counts']}")
+        return {
+            'success': True,
+            'response': generation_result['content'], # This is the parsed SuggestionList
+            'token_counts': generation_result['token_counts']
+        }
+
+    async def get_models(self) -> Optional[List[str]]:
+        """Lists available model names from the OpenAI API."""
+        if not self.client:
+            self.logger.error("OpenAI client is not initialized.")
+            return None
+        try:
+            models_page = await self.client.models.list()
+            # Filter for models that can be used with the Chat Completions API
+            approved_prefixes = ["gpt-4", "gpt-3.5"]
+            models_list = sorted([
+                model.id for model in models_page.data 
+                if any(model.id.startswith(prefix) for prefix in approved_prefixes)
+            ])
+            self.logger.info(f"Successfully retrieved {len(models_list)} OpenAI models.")
+            return models_list
+        except Exception as e:
+            self.logger.exception(f"Error listing OpenAI models: {e}")
+            return None
+
+    async def get_embedding(self, text_content: str, model: Optional[str] = None, dimensions: Optional[int] = None) -> Optional[List[float]]:
+        """
+        Generates an embedding for the given text content using the specified OpenAI model.
+
+        Args:
+            text_content (str): The text to embed.
+            model (Optional[str]): The OpenAI model to use for embeddings.
+            dimensions (Optional[int]): The number of dimensions for the embedding.
+
+        Returns:
+            Optional[List[float]]: A list of floats representing the embedding, or None on error.
+        """
+        if not self.client:
+            self.logger.error("OpenAI client is not initialized. Cannot get embedding.")
+            return None
+        if not text_content:
+            self.logger.warning("No text content provided for embedding.")
+            return None
+        if not model:
+            self.logger.error("OpenAI model name must be provided for generating embeddings.")
             return None
 
         try:
-            system_prompt = """You are a movie and TV show recommendation expert. 
-            Respond with exactly 5 recommendations in a JSON list with the following format. Each recommendation should include:
-            {
-                "title": "Title of the media",
-                "description": "Description of the media",
-                "similarity": "Why did you choose this media?",
-                "mediaType": "movie or tv",
-                "imdb_id": "IMDB ID",
-                "imdb_url": "URL of the media from imdb.com",
-                "imdb_score": "IMDB score (numeric)",
-                "tmdb_url": "URL to the media from themoviedb.org",
-                "tmdb_id": "themoviedb.org ID",
-                "tvdb_id": "TheTVDB.com Movie ID",
-                "rt_url": "Rotten Tomatoes URL of the media",
-                "rt_score": "Rotten Tomatoes Score (numeric)",
-                "poster_url": ""
-            }
-            Verify all URLs and IDs match with the Title of the media before responding."""
-
-            user_prompt = f"""Give me 5 tv series or movies similar to {media_name}. 
-            Exclude the following media from your recommendations: 
-            {all_media}
-
-            Double check to ensure the imdb_url page title contains the title of the media. 
-            Correct the imdb_id if necessary.
-            The tmdb_url page title should also contain the title of the media. 
-            Correct the tmdb_id if necessary."""
-
-            json_schema = Suggestion.model_json_schema()
-            response = self.client.beta.chat.completions.parse(
-                model=self.openai_model,
-                response_format=Suggestion,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
-
-            # Extract the JSON content from the response
-            content = response.choices[0].message.content
-            openai_response = json.loads(content)
+            self.logger.debug(f"Requesting embedding for text using OpenAI model: {model}")
+            embedding_params = {"model": model, "input": text_content}
+            if dimensions:
+                embedding_params["dimensions"] = dimensions
             
-            return openai_response
-        except json.JSONDecodeError:
-            error_message = "OpenAI API returned non-JSON response."
-            self.logger.error(error_message)
-            self.logger.debug(response)
-            return None
+            response = await self.client.embeddings.create(**embedding_params)
+            return response.data[0].embedding
         except Exception as e:
-            error_message = f"OpenAI API error: {e}"
-            self.logger.exception(error_message)
+            self.logger.error(f"Error generating embedding with OpenAI model {model}: {e}", exc_info=True)
             return None
+
+    @classmethod
+    def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns the default settings for the OpenAI provider.
+        """
+        return {
+            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable OpenAI integration."},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "OpenAI API key", "required": True},
+            "base_url": {"value": "https://api.openai.com/v1", "type": SettingType.URL, "description": "OpenAI compatible API base URL.", "required": True},
+            "model": {"value": "gpt-4o", "type": SettingType.STRING, "description": "OpenAI model name (e.g., gpt-4o, gpt-4-turbo, gpt-3.5-turbo)."},
+            "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "OpenAI temperature for controlling randomness (e.g., 0.7). Values range from 0.0 to 2.0."},
+            "embedding_model": {"value": "text-embedding-3-small", "type": SettingType.STRING, "show": False, "description": "OpenAI model name to use for embeddings (e.g., text-embedding-3-small, text-embedding-3-large)."},
+            "embedding_dimensions": {"value": 1536, "type": SettingType.INTEGER, "show": False, "description": "Number of dimensions for OpenAI embeddings (e.g., 1536 for text-embedding-3-small)."},
+            "base_provider": {"value": "llm", "type": SettingType.STRING, "show": False, "description": "Base Provider Type"},
+        }

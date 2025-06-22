@@ -1119,6 +1119,11 @@ async def shutdown_event():
             logger.info("Shutting down APScheduler (AsyncIOScheduler)...")
             # The shutdown method in your Schedule class handles scheduler.shutdown(wait=False)
             _discovarr_instance.scheduler.shutdown() 
+        
+        if hasattr(_discovarr_instance, 'db'):
+            logger.info("Closing database connection...")
+            _discovarr_instance.db.cleanup()
+
         _discovarr_instance = None
         logger.info("Cleaned up Discovarr instance")
 

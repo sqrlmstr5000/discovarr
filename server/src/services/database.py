@@ -1099,10 +1099,6 @@ class Database:
             database.close()
             self.logger.debug("Closed database connection")
 
-    def __del__(self):
-        """Cleanup when the object is destroyed."""
-        self.cleanup()
-
 # def model_to_dict(model, recurse: bool = False) -> dict:
 #     """Convert a model instance to a dictionary."""
 #     data = model.__data__.copy()

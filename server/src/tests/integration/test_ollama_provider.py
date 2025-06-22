@@ -1,6 +1,6 @@
 import os
 import unittest
-from typing import Any
+from typing import Any, List, Dict, Optional
 
 from providers.ollama import OllamaProvider # The class we are testing
 from tests.integration.base.base_live_llm_provider_tests import BaseLiveLlmProviderTests # The base test class
@@ -33,6 +33,16 @@ class TestOllamaProviderLive(BaseLiveLlmProviderTests):
 
     def _get_required_env_vars(self) -> list[str]:
         return [OLLAMA_TEST_BASE_URL_ENV_VAR]
+
+    def _get_generate_content_prompt_data(self) -> List[Dict[str, str]]:
+        """Return a list of messages for Ollama's _generate_content."""
+        return [{'role': 'user', 'content': 'Tell me a short, one-sentence joke.'}]
+
+    def _get_embedding_model_name(self) -> str:
+        return "nomic-embed-text"
+
+    def _get_embedding_dimensions(self) -> Optional[int]:
+        return 768
 
     # BaseLiveLlmProviderTests provides:
     # - asyncSetUp

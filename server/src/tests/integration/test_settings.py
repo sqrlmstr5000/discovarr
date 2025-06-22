@@ -35,7 +35,7 @@ def test_env_variable_overwrites_default_on_creation(tmp_path, monkeypatch):
     assert jellyfin_url_setting.value == expected_url, "The setting value should match the environment variable."
 
     # Clean up the instance to close the DB connection.
-    del discovarr_instance
+    discovarr_instance.db.cleanup()
 
 
 def test_env_variable_overwrites_existing_db_value(tmp_path, monkeypatch):
@@ -55,7 +55,7 @@ def test_env_variable_overwrites_existing_db_value(tmp_path, monkeypatch):
     assert initial_setting.value == "http://jellyfin:8096", "Initial value should be the default."
 
     # Clean up the first instance to release the DB file lock.
-    del discovarr_instance_1
+    discovarr_instance_1.db.cleanup()
 
     # 2. Execute: Set the environment variable and re-initialize Discovarr.
     expected_url = "http://my-overwritten-jellyfin:8096"
@@ -71,4 +71,4 @@ def test_env_variable_overwrites_existing_db_value(tmp_path, monkeypatch):
     assert updated_setting.value == expected_url, "The setting value should have been overwritten by the environment variable."
 
     # Clean up the second instance.
-    del discovarr_instance_2
+    discovarr_instance_2.db.cleanup()

@@ -36,6 +36,11 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
         pass
 
     @abstractmethod
+    def _get_generate_content_prompt_data(self) -> Any:
+        """Return valid prompt_data for the provider's _generate_content method."""
+        pass
+
+    @abstractmethod
     def _get_embedding_model_name(self) -> str:
         """Return a valid embedding model name for the provider to use in embedding tests."""
         pass
@@ -98,6 +103,43 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
             # self.assertTrue(found_test_model, 
             #                 f"The test model '{self.model_name}' was not found in the list of available models from {self.provider.name}.")
             self.assertTrue(len(models_response) > 0, f"{self.provider.name}.get_models() list should not be empty if successful and models exist.")
+
+    async def test_generate_content_live(self):
+        """Tests the live _generate_content() method of the LLM provider for a simple text response."""
+        if not hasattr(self.provider, '_generate_content'):
+            self.skipTest(f"Provider '{self.provider.name}' does not implement _generate_content.")
+            return
+
+        prompt_data = self._get_generate_content_prompt_data()
+        
+        result = await self.provider._generate_content(
+            model=self.model_name,
+            prompt_data=prompt_data,
+            temperature=self.default_temperature,
+            system_prompt=self.default_system_prompt,
+            # No response_format_details to get raw text
+        )
+
+        self.assertIsNotNone(result, f"{self.provider.name}._generate_content() should return a result, not None.")
+        self.assertIsInstance(result, dict, f"{self.provider.name}._generate_content() should return a dictionary.")
+        
+        self.assertIn('success', result, "Result dictionary must contain a 'success' key.")
+        self.assertTrue(result['success'], f"The 'success' key should be True for a successful call. Message: {result.get('message')}")
+        
+        self.assertIn('content', result, "Result dictionary must contain a 'content' key.")
+        self.assertIsNotNone(result['content'], "The 'content' key should not be None.")
+        self.assertIsInstance(result['content'], str, "The 'content' should be a string for a raw text response.")
+        self.assertTrue(len(result['content']) > 0, "The 'content' string should not be empty.")
+
+        # Assert token_counts structure
+        self.assertIn('token_counts', result, "Result dictionary must contain a 'token_counts' key.")
+        self.assertIsInstance(result['token_counts'], dict, "The 'token_counts' field should be a dictionary.")
+        self.assertIn('prompt_token_count', result['token_counts'], "Token counts should include 'prompt_token_count'.")
+        self.assertIsInstance(result['token_counts']['prompt_token_count'], int, "'prompt_token_count' should be an integer.")
+        self.assertIn('candidates_token_count', result['token_counts'], "Token counts should include 'candidates_token_count'.")
+        self.assertIsInstance(result['token_counts']['candidates_token_count'], int, "'candidates_token_count' should be an integer.")
+        self.assertIn('total_token_count', result['token_counts'], "Token counts should include 'total_token_count'.")
+        self.assertIsInstance(result['token_counts']['total_token_count'], int, "'total_token_count' should be an integer.")
 
     async def test_get_similar_media_live_with_suggestion_list_schema(self):
         """

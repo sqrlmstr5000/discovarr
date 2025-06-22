@@ -78,6 +78,10 @@ const ollamaModels = computed(() => {
   return llmModels.value?.ollama || [];
 });
 
+const openaiModels = computed(() => {
+  return llmModels.value?.openai || [];
+});
+
 // Helper functions for type checking
 const isNumberType = (value) => typeof value === 'number'
 const isBooleanType = (value) => typeof value === 'boolean'
@@ -92,6 +96,8 @@ const isProviderConfigured = (groupName) => {
   switch (groupName) {
     case 'gemini':
       return !!group.api_key?.value && tmdbApiKeySet; // Gemini needs its API key AND TMDB's
+    case 'openai':
+      return !!group.api_key?.value && tmdbApiKeySet; // OpenAI needs its API key AND TMDB's
     case 'ollama':
       // Ollama primarily needs a base_url to be functional for enabling, AND TMDB's API key
       return !!group.base_url?.value && tmdbApiKeySet; 
@@ -138,9 +144,10 @@ const fetchLlmModels = async () => {
   // Check if at least one LLM provider is enabled in settings
   const geminiEnabled = settings.value?.gemini?.enabled?.value;
   const ollamaEnabled = settings.value?.ollama?.enabled?.value;
+  const openaiEnabled = settings.value?.openai?.enabled?.value;
 
-  if (!geminiEnabled && !ollamaEnabled) {
-    console.log('No LLM providers (Gemini or Ollama) are enabled. Skipping fetching LLM models.');
+  if (!geminiEnabled && !ollamaEnabled && !openaiEnabled) {
+    console.log('No LLM providers are enabled. Skipping fetching LLM models.');
     llmModels.value = {}; // Ensure models object is empty
     loadingLlmModels.value = false;
     return;
@@ -150,7 +157,7 @@ const fetchLlmModels = async () => {
   try {
     const response = await fetch(`${config.apiUrl}/llm/models`);
     if (!response.ok) throw new Error('Failed to load LLM models');
-    llmModels.value = await response.json(); // Expects format: { "gemini": [...], "ollama": [...] }
+    llmModels.value = await response.json(); // Expects format: { "gemini": [...], "ollama": [...], "openai": [...] }
     console.log('LLM Models loaded:', llmModels.value);
   } catch (error) {
     console.error('Error loading LLM models:', error);
@@ -383,7 +390,7 @@ const updateSetting = async (group, name) => {
     originalValues[group][name].value = successfullyUpdatedValue;
 
     // If a setting for an enabled Gemini provider was changed (e.g., API key updated, or enabled set to true),
-    if ((group === 'gemini' && settings.value.gemini?.enabled?.value === true) || (group === 'ollama' && settings.value.ollama?.enabled?.value === true)) {
+    if ((group === 'gemini' && settings.value.gemini?.enabled?.value === true) || (group === 'ollama' && settings.value.ollama?.enabled?.value === true) || (group === 'openai' && settings.value.openai?.enabled?.value === true)) {
         await fetchLlmModels();
     }
     // If a setting for a request provider was updated, refresh Radarr profiles if any are configured
@@ -1133,6 +1140,24 @@ watch(() => route.hash, (newHash) => {
                         {{ loadingLlmModels ? 'Loading models...' : (geminiModels.length === 0 ? 'No models available' : 'Select a model...') }}
                       </option>
                       <option v-for="modelName in geminiModels" :key="modelName" :value="modelName">
+                        {{ modelName }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <!-- OpenAI Model Dropdown -->
+                  <template v-else-if="groupName === 'openai' && (settingName === 'model' || settingName === 'embedding_model')">
+                    <select
+                      :id="groupName + '-' + settingName"
+                      v-model="settingDetails.value"
+                      @change="updateSetting(groupName, settingName)"
+                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                      :disabled="loadingLlmModels"
+                    >
+                      <option :value="null">
+                        {{ loadingLlmModels ? 'Loading models...' : (openaiModels.length === 0 ? 'No models available' : 'Select a model...') }}
+                      </option>
+                      <option v-for="modelName in openaiModels" :key="modelName" :value="modelName">
                         {{ modelName }}
                       </option>
                     </select>
