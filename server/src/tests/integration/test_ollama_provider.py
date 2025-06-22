@@ -36,7 +36,7 @@ class TestOllamaProviderLive(BaseLiveLlmProviderTests):
 
     def _get_generate_content_prompt_data(self) -> List[Dict[str, str]]:
         """Return a list of messages for Ollama's _generate_content."""
-        return [{'role': 'user', 'content': 'Tell me a short, one-sentence joke.'}]
+        return "Tell me a short, one-sentence joke."
 
     def _get_embedding_model_name(self) -> str:
         return "nomic-embed-text"

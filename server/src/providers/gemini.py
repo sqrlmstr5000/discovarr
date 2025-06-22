@@ -39,7 +39,7 @@ class GeminiProvider(LLMProviderBase):
     async def _generate_content(
         self,
         model: str,
-        prompt_data: str, # For Gemini, prompt_data is a string
+        prompt_data: str, 
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = 0.7,
         response_format_details: Optional[Any] = None, # Pydantic model for response_schema
@@ -51,6 +51,9 @@ class GeminiProvider(LLMProviderBase):
         if not self.gemini_api_key:
             return {'success': False, 'content': None, 'token_counts': None, 'message': "Gemini API Key is not configured."}
 
+        content = None
+        content_str = None
+        response = None
         config_params = {
             "system_instruction": system_prompt,
             "temperature": temperature,
@@ -84,9 +87,11 @@ class GeminiProvider(LLMProviderBase):
                 config=types.GenerateContentConfig(**config_params)
             )
             if response_format_details: # This should be a Pydantic model for Gemini
+                content_str = response.text
                 content = json.loads(response.text) # Parsed content based on response_schema
             else:
-                content = response.text # Return raw text if no schema is provided
+                content_str = response.text # Return raw text if no schema is provided
+                content = content_str
 
             usage_meta = response.usage_metadata
             token_counts = {
@@ -97,8 +102,11 @@ class GeminiProvider(LLMProviderBase):
             }
             return {'success': True, 'content': content, 'token_counts': token_counts}
         except json.JSONDecodeError as e:
-            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Gemini API returned non-JSON or malformed JSON response: {response.text if 'response' in locals() else 'Response object not available'} - {e}"}
+            self.logger.debug(f"Gemini raw content for _generate_content: {content_str}")
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Gemini API returned non-JSON or malformed JSON response: {content_str} - {e}"}
         except Exception as e:
+            self.logger.error(f"Gemini API general error: {e}", exc_info=True)
+            self.logger.debug(f"Gemini raw response for _generate_content: {response}")
             return {'success': False, 'content': None, 'token_counts': None, 'message': f"Gemini API general error: {e}"}
 
     async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
@@ -175,8 +183,8 @@ class GeminiProvider(LLMProviderBase):
             result = await self.client.aio.models.embed_content(model=embedding_model, 
                                                                 contents=text_content,
                                                                 config=types.EmbedContentConfig(
-                                                                    output_dimensionality=dimensions),
-                                                                    task_type="SEMANTIC_SIMILARITY")
+                                                                    output_dimensionality=dimensions,
+                                                                    task_type="SEMANTIC_SIMILARITY"))
             return result.embeddings[0].values
         except Exception as e:
             self.logger.error(f"Error generating embedding with Gemini model {embedding_model}: {e}", exc_info=True)

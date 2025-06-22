@@ -1,5 +1,7 @@
 import unittest
 import os
+import json
+import unittest.mock # Import the mock module
 from abc import ABC, abstractmethod
 from typing import Any, Optional, List
 
@@ -141,6 +143,46 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
         self.assertIn('total_token_count', result['token_counts'], "Token counts should include 'total_token_count'.")
         self.assertIsInstance(result['token_counts']['total_token_count'], int, "'total_token_count' should be an integer.")
 
+    async def test_generate_content_malformed_json_parsing_error(self):
+        """
+        Tests that _generate_content correctly handles a JSONDecodeError
+        when attempting to parse the LLM's response, specifically when
+        response_format_details is provided.
+        This test mocks the `json.loads` function to simulate the parsing failure.
+        """
+        if not hasattr(self.provider, '_generate_content'):
+            self.skipTest(f"Provider '{self.provider.name}' does not implement _generate_content.")
+            return
+
+        prompt_data = "Generate some JSON, but it will be malformed."
+        malformed_json_string = '{"suggestions": [{"title": "Bad JSON", "mediaType": "movie"}, {"title": "Missing comma" "mediaType": "tv"}]' # Malformed string
+        error_message_part = "Simulated JSONDecodeError"
+
+        # We need to ensure _generate_content is called with response_format_details
+        # so that it attempts to call json.loads.
+        # The actual content returned by the LLM client doesn't matter as much here,
+        # as we are mocking json.loads directly.
+        # However, some providers might log the raw content, so providing a string is good.
+
+        with unittest.mock.patch('json.loads') as mock_json_loads:
+            # Configure json.loads to raise a JSONDecodeError
+            mock_json_loads.side_effect = json.JSONDecodeError(error_message_part, malformed_json_string, 0)
+
+            result = await self.provider._generate_content(
+                model=self.model_name,
+                prompt_data=prompt_data,
+                temperature=self.default_temperature,
+                response_format_details=SuggestionList, # Crucial to trigger JSON parsing
+            )
+
+            # Assert that the result indicates failure due to JSON parsing
+            self.assertIsNotNone(result, f"{self.provider.name}._generate_content() should return a result, not None, on failure.")
+            self.assertFalse(result['success'], "The 'success' key should be False for a failed JSON parsing.")
+            self.assertIn('message', result, "Failure result dictionary must contain a 'message' key.")
+            self.assertIn(error_message_part, result['message'], "The error message should contain the simulated error part.")
+            self.assertIn("malformed JSON response", result['message'], "The error message should contain the malformed JSON string.")
+            self.assertIsNone(result['content'], "The 'content' key should be None on JSON parsing failure.")
+
     async def test_get_similar_media_live_with_suggestion_list_schema(self):
         """
         Tests the live get_similar_media() method of GeminiProvider with response_schema=SuggestionList.
@@ -185,6 +227,47 @@ class BaseLiveLlmProviderTests(ABC, unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(first_suggestion, dict, "Each suggestion should be a dictionary.")
             self.assertIn('title', first_suggestion, "Each suggestion should have a 'title'.")
             self.assertIn('mediaType', first_suggestion, "Each suggestion should have a 'mediaType'.")
+
+    async def test_get_similar_media_handles_invalid_json_from_provider(self):
+        """
+        Tests that get_similar_media correctly handles a failure response from _generate_content,
+        simulating what would happen with an invalid JSON response from the LLM.
+        This is a mocked test to ensure error propagation.
+        """
+        if not hasattr(self.provider, 'get_similar_media'):
+            self.skipTest(f"Provider '{self.provider.name}' does not implement get_similar_media.")
+            return
+
+        prompt_text = "This prompt will result in a mocked failure."
+        error_message = "Simulated failure: LLM returned malformed JSON."
+
+        # We mock the internal _generate_content method to simulate a failure.
+        # This is not a "live" call, but tests the error handling logic of the public method.
+        # The _generate_content method is responsible for parsing JSON, so if it fails,
+        # it should return a dict with 'success': False.
+        with unittest.mock.patch.object(self.provider, '_generate_content', new_callable=unittest.mock.AsyncMock) as mock_generate_content:
+            mock_generate_content.return_value = {
+                'success': False,
+                'content': None,
+                'token_counts': None,
+                'message': error_message
+            }
+
+            result = await self.provider.get_similar_media(
+                model=self.model_name,
+                prompt=prompt_text,
+            )
+
+            # Ensure the mocked method was called
+            mock_generate_content.assert_called_once()
+
+            # Assert that the error was propagated correctly
+            self.assertIsNotNone(result, f"{self.provider.name}.get_similar_media() should return a result, not None, on failure.")
+            self.assertIsInstance(result, dict, f"{self.provider.name}.get_similar_media() should return a dictionary on failure.")
+            self.assertIn('success', result, "Failure result dictionary must contain a 'success' key.")
+            self.assertFalse(result['success'], "The 'success' key should be False for a failed call.")
+            self.assertIn('message', result, "Failure result dictionary must contain a 'message' key.")
+            self.assertIn(error_message, result['message'], "The original error message should be part of the final message.")
 
     async def test_get_embedding_live(self):
         """Tests the live get_embedding() method of the LLM provider."""

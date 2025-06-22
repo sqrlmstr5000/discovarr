@@ -9,10 +9,12 @@ from services.models import SuggestionList
 # Environment variable names
 GEMINI_API_KEY_ENV_VAR = "GEMINI_TEST_API_KEY"
 GEMINI_TEST_MODEL_ENV_VAR = "GEMINI_TEST_MODEL" # Optional, for overriding the default test model
+GEMINI_TEST_EMBEDDING_MODEL_ENV_VAR = "GEMINI_TEST_EMBEDDING_MODEL"
 
 # Default model to use for tests if not overridden by environment variable
 # Using the default from GeminiProvider.get_default_settings()
-DEFAULT_GEMINI_TEST_MODEL = "gemini-1.5-flash-latest"
+DEFAULT_GEMINI_TEST_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_TEST_EMBEDDING_MODEL = "gemini-embedding-exp"
 
 class TestGeminiProviderLive(BaseLiveLlmProviderTests):
     """
@@ -40,7 +42,7 @@ class TestGeminiProviderLive(BaseLiveLlmProviderTests):
         return "Tell me a short, one-sentence joke."
 
     def _get_embedding_model_name(self) -> str:
-        return "models/text-embedding-004"
+        return os.getenv(GEMINI_TEST_EMBEDDING_MODEL_ENV_VAR, DEFAULT_GEMINI_TEST_EMBEDDING_MODEL)
 
     def _get_embedding_dimensions(self) -> Optional[int]:
         return 768

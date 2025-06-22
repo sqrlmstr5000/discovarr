@@ -71,6 +71,7 @@ class OpenAIProvider(LLMProviderBase):
             
             usage = None
             response = None
+            content_str = None
             if response_format_details:
                 # This assumes a library like 'instructor' is used to patch the client for 'response_model'
                 chat_completion_kwargs = {
@@ -81,7 +82,8 @@ class OpenAIProvider(LLMProviderBase):
                 }
                 self.logger.debug(f"OpenAI kwargs for _generate_content: {chat_completion_kwargs}")
                 response = await self.client.responses.parse(**chat_completion_kwargs)
-                content = json.loads(response.output[0].content[0].text)
+                content_str = response.output[0].content[0].text
+                content = json.loads(content_str)
                 usage = response.usage
             else:
                 chat_completion_kwargs = {
@@ -99,16 +101,16 @@ class OpenAIProvider(LLMProviderBase):
             if usage:
                 self.logger.debug(f"OpenAI raw token usage for _generate_content: {usage}")
                 token_counts = {
-                    'prompt_token_count': usage.input_tokens,
-                    'candidates_token_count': usage.output_tokens,
+                    'prompt_token_count': getattr(usage, 'input_tokens', getattr(usage, 'prompt_tokens', 0)),
+                    'candidates_token_count': getattr(usage, 'output_tokens', getattr(usage, 'completion_tokens', 0)),
                     'thoughts_token_count': 0, # OpenAI doesn't have a direct 'thoughts' token count
                     'total_token_count': usage.total_tokens,
                 }
                 self.logger.debug(f"OpenAI token usage for _generate_content: {token_counts}")
             return {'success': True, 'content': content, 'token_counts': token_counts}
         except json.JSONDecodeError as e:
-            content_str_for_error = content if isinstance(content, str) else "Response content not available as string"
-            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API returned non-JSON or malformed JSON response: {content_str_for_error} - {e}"}
+            self.logger.debug(f"OpenAI raw content for _generate_content: {content_str}")
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API returned non-JSON or malformed JSON response: {content_str} - {e}"}
         except Exception as e:
             self.logger.error(f"OpenAI API general error: {e}", exc_info=True)
             self.logger.debug(f"OpenAI raw response for _generate_content: {response}")

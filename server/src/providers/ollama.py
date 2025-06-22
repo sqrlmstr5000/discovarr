@@ -45,8 +45,8 @@ class OllamaProvider(LLMProviderBase):
     async def _generate_content(
         self,
         model: str,
-        prompt_data: List[Dict[str, str]], # For Ollama, prompt_data is a list of messages
-        system_prompt: Optional[str] = None, # System prompt is part of prompt_data for Ollama
+        prompt_data: str, 
+        system_prompt: Optional[str] = None,
         temperature: Optional[float] = 0.7,
         response_format_details: Optional[Any] = None, # JSON schema for 'format' parameter
         **kwargs: Any
@@ -57,23 +57,37 @@ class OllamaProvider(LLMProviderBase):
         if not self.client:
             return {'success': False, 'content': None, 'token_counts': None, 'message': "Ollama client is not initialized."}
 
+        content = None
+        content_str = None
+        response = None # Initialize response to avoid UnboundLocalError
         options = {}
         if temperature is not None:
             options['temperature'] = temperature
 
         try:
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': prompt_data}
+            ]
+            format_param = None
+            if response_format_details: # This should be SuggestionList.model_json_schema() or similar
+                # Ollama's format parameter expects a dictionary (JSON schema)
+                format_param = response_format_details.model_json_schema()
+
             self.logger.debug(f"Sending request to Ollama model {model} with messages: {prompt_data}")
             response = await self.client.chat(
                 model=model,
-                messages=prompt_data,
-                format=response_format_details, # This should be SuggestionList.model_json_schema() or similar
+                messages=messages,
+                format=format_param,
                 options=options if options else None
             )
 
             if response_format_details:
-                content = json.loads(response['message']['content'])
+                content_str = response['message']['content']
+                content = json.loads(content_str)
             else:
-                content = response['message']['content']
+                content_str = response['message']['content']
+                content = content_str
                 
             token_counts = {
                 'prompt_token_count': response.get('prompt_eval_count', 0),
@@ -83,8 +97,11 @@ class OllamaProvider(LLMProviderBase):
             }
             return {'success': True, 'content': content, 'token_counts': token_counts}
         except json.JSONDecodeError as e:
-            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Ollama API returned non-JSON or malformed JSON response: {response['message']['content'] if 'response' in locals() and 'message' in response and 'content' in response['message'] else 'Response content not available'} - {e}"}
+            self.logger.debug(f"Ollama raw content for _generate_content: {content_str}")
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Ollama API returned non-JSON or malformed JSON response: {content_str} - {e}"}
         except Exception as e:
+            self.logger.error(f"Ollama API general error: {e}", exc_info=True)
+            self.logger.debug(f"Ollama raw response for _generate_content: {response}")
             return {'success': False, 'content': None, 'token_counts': None, 'message': f"Ollama API general error: {e}"}
 
     async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
@@ -113,18 +130,14 @@ class OllamaProvider(LLMProviderBase):
         if system_prompt is None:
             system_prompt = "You are a helpful assistant."
 
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': prompt}
-        ]
-
         self.logger.debug(f"get_similar_media using prompt: {prompt} and system_prompt: {system_prompt}")
 
         generation_result = await self._generate_content(
             model=model,
-            prompt_data=messages,
+            prompt_data=prompt,
+            system_prompt=system_prompt,
             temperature=temperature,
-            response_format_details=SuggestionList.model_json_schema(), # Specific schema format for this task
+            response_format_details=SuggestionList, # Specific schema format for this task
             **kwargs # Pass through other kwargs if any
         )
 
