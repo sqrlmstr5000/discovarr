@@ -322,8 +322,8 @@ class Discovarr:
 
         if self.openai_enabled and self.openai_api_key and self.openai_base_url:
             self.openai = OpenAIProvider(
-                openai_api_key=self.openai_api_key,
-                openai_base_url=self.openai_base_url
+                api_key=self.openai_api_key,
+                base_url=self.openai_base_url
             )
         else:
             self.openai = None
@@ -364,7 +364,8 @@ class Discovarr:
         elif self.overseerr_enabled:
             self.logger.warning("Overseerr is enabled but URL or API key is missing. Overseerr service not initialized.")
         else:
-            self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
+            self.logger.info("Overseerr integration is disabled.")
+            
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
 
         # Initialize LLMService with configured providers and settings
@@ -375,7 +376,7 @@ class Discovarr:
             enabled_providers=self.enabled_providers,
             gemini_provider=self.gemini,
             ollama_provider=self.ollama,
-            openai_provider=self.openai,
+            openai_provider=self.openai, # Pass the OpenAIProvider instance
             jellyfin_provider=self.jellyfin,
             plex_provider=self.plex,
             trakt_provider=self.trakt
@@ -414,8 +415,8 @@ class Discovarr:
                 raise ValueError("Both Sonarr URL and API key are required if Sonarr URL is provided.")
             
         if self.gemini_enabled:
-            if self.gemini_api_key:
-                raise ValueError("Gemini API key is required if a Gemini model is specified.")
+            if not self.gemini_api_key: # Corrected logic: check if API key is missing
+                raise ValueError("Gemini API key is required when Gemini integration is enabled.")
         if self.ollama_enabled:
             if not self.ollama_base_url:
                 raise ValueError("Ollama Base URL is required when Ollama integration is enabled.")

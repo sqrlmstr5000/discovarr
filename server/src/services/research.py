@@ -8,6 +8,7 @@ from .settings import SettingsService
 from .llm import LLMService
 from .database import Database # Import Database for type hinting
 from .models import MediaResearch
+from providers.openai import OpenAIProvider # For checking provider name
 from providers.gemini import GeminiProvider # For checking provider name
 from providers.ollama import OllamaProvider # For checking provider name
 
@@ -42,6 +43,7 @@ class ResearchService:
             return None
 
         llm_embedding_model_name = None
+        llm_embedding_dimensions = None
         if self.llm_service.enabled_llm_provider_names:
             first_provider_name = self.llm_service.enabled_llm_provider_names[0]
             if first_provider_name == GeminiProvider.PROVIDER_NAME:
@@ -50,6 +52,9 @@ class ResearchService:
             elif first_provider_name == OllamaProvider.PROVIDER_NAME:
                 llm_embedding_model_name = self.settings_service.get("ollama", "embedding_model")
                 llm_embedding_dimensions = self.settings_service.get("ollama", "embedding_dimensions")
+            elif first_provider_name == OpenAIProvider.PROVIDER_NAME:
+                llm_embedding_model_name = self.settings_service.get("openai", "embedding_model")
+                llm_embedding_dimensions = self.settings_service.get("openai", "embedding_dimensions")
             
             if not llm_embedding_model_name or not llm_embedding_dimensions:
                 self.logger.error(
@@ -63,7 +68,7 @@ class ResearchService:
         try:
             self.logger.debug(f"Requesting embedding via LLMService with model: {llm_embedding_model_name} for text.")
             # The model parameter for llm_service.generate_embedding is the specific model name for the provider.
-            embedding = await self.llm_service.generate_embedding(text_content=text.strip(), model=llm_embedding_model_name, )
+            embedding = await self.llm_service.generate_embedding(text_content=text.strip(), model=llm_embedding_model_name, dimensions=llm_embedding_dimensions)
             return embedding # LLMService.generate_embedding already returns List[float] or None
         except Exception as e:
             self.logger.error(f"Error creating embedding via LLMService: {e}", exc_info=True)

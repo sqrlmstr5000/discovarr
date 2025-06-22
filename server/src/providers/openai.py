@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ class OpenAIProvider(LLMProviderBase):
     """
     PROVIDER_NAME = "openai"
 
-    def __init__(self, openai_api_key: str, openai_base_url: Optional[str] = "https://api.openai.com/v1"):
+    def __init__(self, api_key: str, base_url: Optional[str] = "https://api.openai.com/v1"):
         """
         Initializes the OpenAIProvider with API configurations.
 
@@ -24,7 +24,7 @@ class OpenAIProvider(LLMProviderBase):
                                              Defaults to "https://api.openai.com/v1".
         """
         self.logger = logging.getLogger(__name__)
-        self.openai_api_key = openai_api_key
+        self.openai_api_key = api_key
         self.logger.info("Initializing OpenAIProvider...")
 
         if not self.openai_api_key:
@@ -32,7 +32,7 @@ class OpenAIProvider(LLMProviderBase):
             self.client = None
             return
 
-        self.client = AsyncOpenAI(api_key=self.openai_api_key, base_url=openai_base_url)
+        self.client = AsyncOpenAI(api_key=self.openai_api_key, base_url=base_url)
 
     @property
     def name(self) -> str:
@@ -42,8 +42,8 @@ class OpenAIProvider(LLMProviderBase):
     async def _generate_content(
         self,
         model: str,
-        prompt_data: List[Dict[str, str]], # For OpenAI, prompt_data is a list of messages
-        system_prompt: Optional[str] = None, # System prompt is part of prompt_data for OpenAI
+        prompt_data: Union[str, List[Dict[str, str]]],
+        system_prompt: Optional[str] = None,
         temperature: Optional[float] = 0.7,
         response_format_details: Optional[Any] = None, # Pydantic model for response_model
         **kwargs: Any
@@ -54,39 +54,64 @@ class OpenAIProvider(LLMProviderBase):
         if not self.client:
             return {'success': False, 'content': None, 'token_counts': None, 'message': "OpenAI client is not initialized."}
 
+        messages = []
+        if isinstance(prompt_data, str):
+            if system_prompt:
+                messages.append({'role': 'system', 'content': system_prompt})
+            messages.append({'role': 'user', 'content': prompt_data})
+        elif isinstance(prompt_data, list):
+            messages = prompt_data
+            if system_prompt:
+                self.logger.warning("system_prompt was provided to _generate_content along with a list of messages. Ignoring the system_prompt argument as the list is expected to be complete.")
+        else:
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"Invalid prompt_data format for OpenAI: {type(prompt_data)}"}
+
         try:
-            self.logger.debug(f"Sending request to OpenAI model {model} with messages: {prompt_data}")
+            self.logger.debug(f"Sending request to OpenAI model {model} with messages: {messages}")
             
+            usage = None
+            response = None
             if response_format_details:
+                # This assumes a library like 'instructor' is used to patch the client for 'response_model'
                 chat_completion_kwargs = {
                     "model": model,
-                    "input": prompt_data,
+                    "input": messages,
                     "temperature": temperature,
                     "text_format": response_format_details,
                 }
+                self.logger.debug(f"OpenAI kwargs for _generate_content: {chat_completion_kwargs}")
                 response = await self.client.responses.parse(**chat_completion_kwargs)
-                content = json.loads(response.output_parsed)
+                content = json.loads(response.output[0].content[0].text)
+                usage = response.usage
             else:
                 chat_completion_kwargs = {
                     "model": model,
-                    "messages": prompt_data,
+                    "messages": messages,
                     "temperature": temperature,
                 }
+                self.logger.debug(f"OpenAI kwargs for _generate_content: {chat_completion_kwargs}")
                 response = await self.client.chat.completions.create(**chat_completion_kwargs)
                 content_str = response.choices[0].message.content
                 content = content_str
+                usage = response.usage
 
-            usage = response.usage
-            token_counts = {
-                'prompt_token_count': usage.prompt_tokens,
-                'candidates_token_count': usage.completion_tokens,
-                'thoughts_token_count': 0, # OpenAI doesn't have a direct 'thoughts' token count
-                'total_token_count': usage.total_tokens,
-            }
+            token_counts = None
+            if usage:
+                self.logger.debug(f"OpenAI raw token usage for _generate_content: {usage}")
+                token_counts = {
+                    'prompt_token_count': usage.input_tokens,
+                    'candidates_token_count': usage.output_tokens,
+                    'thoughts_token_count': 0, # OpenAI doesn't have a direct 'thoughts' token count
+                    'total_token_count': usage.total_tokens,
+                }
+                self.logger.debug(f"OpenAI token usage for _generate_content: {token_counts}")
             return {'success': True, 'content': content, 'token_counts': token_counts}
         except json.JSONDecodeError as e:
-            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API returned non-JSON or malformed JSON response: {content_str if 'content_str' in locals() else 'Response content not available'} - {e}"}
+            content_str_for_error = content if isinstance(content, str) else "Response content not available as string"
+            return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API returned non-JSON or malformed JSON response: {content_str_for_error} - {e}"}
         except Exception as e:
+            self.logger.error(f"OpenAI API general error: {e}", exc_info=True)
+            self.logger.debug(f"OpenAI raw response for _generate_content: {response}")
             return {'success': False, 'content': None, 'token_counts': None, 'message': f"OpenAI API general error: {e}"}
 
     async def get_similar_media(self, model: str, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = 0.7, **kwargs: Any) -> Optional[Dict[str, Any]]:
@@ -119,7 +144,6 @@ class OpenAIProvider(LLMProviderBase):
             self.logger.error(f"Failed to get similar media from OpenAI: {generation_result.get('message')}")
             return {'success': False, 'message': generation_result.get('message', 'Generation failed'), 'status_code': 500}
 
-        self.logger.debug(f"OpenAI token usage for get_similar_media: {generation_result['token_counts']}")
         return {
             'success': True,
             'response': generation_result['content'], # This is the parsed SuggestionList
@@ -188,7 +212,7 @@ class OpenAIProvider(LLMProviderBase):
             "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable OpenAI integration."},
             "api_key": {"value": None, "type": SettingType.STRING, "description": "OpenAI API key", "required": True},
             "base_url": {"value": "https://api.openai.com/v1", "type": SettingType.URL, "description": "OpenAI compatible API base URL.", "required": True},
-            "model": {"value": "gpt-4o", "type": SettingType.STRING, "description": "OpenAI model name (e.g., gpt-4o, gpt-4-turbo, gpt-3.5-turbo)."},
+            "model": {"value": "gpt-4.1-mini", "type": SettingType.STRING, "description": "OpenAI model name (e.g., gpt-4o, gpt-4-turbo)."},
             "temperature": {"value": 0.7, "type": SettingType.FLOAT, "description": "OpenAI temperature for controlling randomness (e.g., 0.7). Values range from 0.0 to 2.0."},
             "embedding_model": {"value": "text-embedding-3-small", "type": SettingType.STRING, "show": False, "description": "OpenAI model name to use for embeddings (e.g., text-embedding-3-small, text-embedding-3-large)."},
             "embedding_dimensions": {"value": 1536, "type": SettingType.INTEGER, "show": False, "description": "Number of dimensions for OpenAI embeddings (e.g., 1536 for text-embedding-3-small)."},

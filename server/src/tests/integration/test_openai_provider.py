@@ -28,7 +28,7 @@ class TestOpenAIProviderLive(BaseLiveLlmProviderTests):
         if not api_key:
             self.skipTest(f"{OPENAI_API_KEY_ENV_VAR} environment variable not set.")
         # If base_url is None, the provider's __init__ will use its default.
-        return OpenAIProvider(openai_api_key=api_key, openai_base_url=base_url)
+        return OpenAIProvider(api_key=api_key, base_url=base_url)
 
     def _get_model_name(self) -> str:
         return os.getenv(OPENAI_TEST_MODEL_ENV_VAR, DEFAULT_OPENAI_TEST_MODEL)

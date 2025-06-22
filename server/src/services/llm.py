@@ -4,6 +4,7 @@ from jinja2 import Template
 
 from .settings import SettingsService
 from providers.gemini import GeminiProvider
+from providers.openai import OpenAIProvider
 from providers.ollama import OllamaProvider
 from providers.jellyfin import JellyfinProvider
 from providers.plex import PlexProvider
@@ -21,6 +22,7 @@ class LLMService:
                  db_service: Database, # Add db_service parameter
                  enabled_providers: Dict[str, List[str]], # Corrected type hint
                  gemini_provider: Optional[GeminiProvider] = None,
+                 openai_provider: Optional[OpenAIProvider] = None,
                  ollama_provider: Optional[OllamaProvider] = None,
                  jellyfin_provider: Optional[JellyfinProvider] = None,
                  plex_provider: Optional[PlexProvider] = None,
@@ -31,6 +33,7 @@ class LLMService:
         self.enabled_llm_provider_names = enabled_providers.get("llm", []) # Corrected access
         self.enabled_library_provider_names = enabled_providers.get("library", []) # Corrected access
         self.gemini_provider = gemini_provider
+        self.openai_provider = openai_provider
         self.ollama_provider = ollama_provider
         self.jellyfin_provider = jellyfin_provider
         self.plex_provider = plex_provider
@@ -81,6 +84,21 @@ class LLMService:
                     model=ollama_model,
                     system_prompt=system_prompt,
                     temperature=ollama_temp,
+                    **kwargs
+                )
+            elif provider_name == OpenAIProvider.PROVIDER_NAME and self.openai_provider:
+                openai_model = self.settings.get("openai", "model")
+                openai_temp = self.settings.get("openai", "temperature")
+                if not openai_model:
+                    self.logger.error("OpenAI is enabled, but its model is not configured. Trying next provider.")
+                    continue
+                self.logger.info(f"Using OpenAI provider (Model: {openai_model}) for suggestions.")
+
+                provider_result = await self.openai_provider.get_similar_media(
+                    prompt=prompt,
+                    model=openai_model,
+                    system_prompt=system_prompt,
+                    temperature=openai_temp,
                     **kwargs
                 )
 
@@ -140,6 +158,14 @@ class LLMService:
                 self.logger.info(f"Using Ollama provider (Model: {ollama_model}) for generic content generation.")
                 # Note: For Ollama, system_prompt is typically part of prompt_data (list of messages)
                 provider_result = await self.ollama_provider._generate_content(model=ollama_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=ollama_temp, response_format_details=response_format_details, **kwargs)
+            elif provider_name == OpenAIProvider.PROVIDER_NAME and self.openai_provider:
+                openai_model = self.settings.get("openai", "model")
+                openai_temp = self.settings.get("openai", "temperature")
+                if not openai_model:
+                    self.logger.error("OpenAI is enabled, but its model is not configured. Trying next provider.")
+                    continue
+                self.logger.info(f"Using OpenAI provider (Model: {openai_model}) for generic content generation.")
+                provider_result = await self.openai_provider._generate_content(model=openai_model, prompt_data=prompt_data, system_prompt=system_prompt, temperature=openai_temp, response_format_details=response_format_details, **kwargs)
         
             if provider_result:
                 token_counts = provider_result.get('token_counts')
@@ -333,6 +359,10 @@ class LLMService:
             self.logger.info(f"Fetching models for {OllamaProvider.PROVIDER_NAME}")
             all_models[OllamaProvider.PROVIDER_NAME] = await self.ollama_provider.get_models()
 
+        if OpenAIProvider.PROVIDER_NAME in self.enabled_llm_provider_names and self.openai_provider:
+            self.logger.info(f"Fetching models for {OpenAIProvider.PROVIDER_NAME}")
+            all_models[OpenAIProvider.PROVIDER_NAME] = await self.openai_provider.get_models()
+
         if not all_models:
             self.logger.warning("No LLM providers enabled or failed to fetch models from any enabled provider.")
         
@@ -368,6 +398,16 @@ class LLMService:
                 
                 self.logger.info(f"Using Ollama provider (Model: {model}) for embedding generation.")
                 return await self.ollama_provider.get_embedding(text_content=text_content, model=model, dimensions=dimensions)
+
+            elif provider_name == OpenAIProvider.PROVIDER_NAME and self.openai_provider:
+                # For OpenAI, the model name is passed directly from the caller (ResearchService)
+                # which gets it from settings.
+                if not model:
+                    self.logger.warning(f"OpenAI is enabled, but no embedding model was provided. Trying next provider.")
+                    continue
+                
+                self.logger.info(f"Using OpenAI provider (Model: {model}) for embedding generation.")
+                return await self.openai_provider.get_embedding(text_content=text_content, model=model, dimensions=dimensions)
 
         self.logger.error("No enabled and configured LLM provider found that supports embedding generation with the current settings.")
         return None
