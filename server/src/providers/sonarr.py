@@ -19,7 +19,7 @@ class SonarrProvider(RequestProviderBase):
         self.logger = logging.getLogger(__name__)
         # self.url, self.api_key, and self.headers are now managed by the Api base class
 
-    def lookup_media(self, tmdb_id: str) -> APIResponse:
+    def lookup_media(self, tmdb_id: str, media_type: Optional[str] = "tv") -> APIResponse:
         """Look up series details using IMDB ID.
         
         Args:

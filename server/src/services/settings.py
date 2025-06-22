@@ -98,6 +98,7 @@ class SettingsService:
         from providers.radarr import RadarrProvider # Import Radarr
         from providers.sonarr import SonarrProvider # Import Sonarr
         from providers.jellyseerr import JellyseerrProvider # Import JellyseerrProvider
+        from providers.overseerr import OverseerrProvider
         # Add other ProviderBase implementations here
 
         # Define lists of provider classes
@@ -111,6 +112,7 @@ class SettingsService:
             JellyfinProvider,
             TraktProvider,
             JellyseerrProvider,
+            OverseerrProvider,
         ]
 
         current_default_settings = SettingsService._BASE_DEFAULT_SETTINGS.copy()

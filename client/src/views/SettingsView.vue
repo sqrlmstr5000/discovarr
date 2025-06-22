@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed, nextTick } from 'vue'
+import { useRoute } from 'vue-router';
 import { useToastStore } from '@/stores/toast'; // Import the toast store
 import { config } from '../config'
 
@@ -8,6 +9,10 @@ const radarrQualityProfiles = ref([])
 const loadingRadarrProfiles = ref(false)
 const sonarrQualityProfiles = ref([])
 const loadingSonarrProfiles = ref(false)
+const jellyseerrUsers = ref([]);
+const loadingJellyseerrUsers = ref(false);
+const overseerrUsers = ref([]);
+const loadingOverseerrUsers = ref(false);
 const llmModels = ref({}); // Will store models keyed by provider name
 const loadingLlmModels = ref(false);
 const tokenUsageSummary = ref(null)
@@ -26,13 +31,14 @@ const endDate = ref('');
 
 let originalValues = {}
 const toastStore = useToastStore(); // Initialize the toast store
+const route = useRoute();
 
 const applicationSettings = computed(() => {
   if (!settings.value) return {};
   return Object.entries(settings.value)
-    .filter(([, groupDetails]) => { // groupName is not used here
+    .filter(([, groupDetails]) => {
       const baseProvider = groupDetails.base_provider?.value;
-      return !(baseProvider === 'library' || baseProvider === 'llm');
+      return !(baseProvider === 'library' || baseProvider === 'llm' || baseProvider === 'request');
     })
     .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
 });
@@ -40,7 +46,7 @@ const applicationSettings = computed(() => {
 const libraryProviderSettings = computed(() => {
   if (!settings.value) return {};
   return Object.entries(settings.value)
-    .filter(([, groupDetails]) => { // groupName is not used here
+    .filter(([, groupDetails]) => {
       const baseProvider = groupDetails.base_provider?.value;
       return baseProvider === 'library';
     })
@@ -50,10 +56,17 @@ const libraryProviderSettings = computed(() => {
 const llmProviderSettings = computed(() => {
   if (!settings.value) return {};
   return Object.entries(settings.value)
-    .filter(([, groupDetails]) => { // groupName is not used here
+    .filter(([, groupDetails]) => {
       const baseProvider = groupDetails.base_provider?.value;
       return baseProvider === 'llm';
     })
+    .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+});
+
+const requestProviderSettings = computed(() => {
+  if (!settings.value) return {};
+  return Object.entries(settings.value)
+    .filter(([, groupDetails]) => groupDetails.base_provider?.value === 'request')
     .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
 });
 
@@ -85,6 +98,8 @@ const isProviderConfigured = (groupName) => {
     case 'radarr':
     case 'sonarr':
     case 'plex':
+    case 'overseerr':
+    case 'jellyseerr':
     case 'jellyfin':
       return !!group.url?.value && !!group.api_key?.value;
     case 'trakt':
@@ -174,6 +189,37 @@ const fetchSonarrQualityProfiles = async () => {
   }
 };
 
+// Load Jellyseerr users
+const fetchJellyseerrUsers = async () => {
+  loadingJellyseerrUsers.value = true;
+  try {
+    const response = await fetch(`${config.apiUrl}/jellyseerr/users`);
+    if (!response.ok) throw new Error('Failed to load Jellyseerr users');
+    jellyseerrUsers.value = await response.json();
+  } catch (error) {
+    console.error('Error loading Jellyseerr users:', error);
+    jellyseerrUsers.value = [];
+    toastStore.show(`Failed to load Jellyseerr users: ${error.message}`, 'error');
+  } finally {
+    loadingJellyseerrUsers.value = false;
+  }
+};
+
+// Load Overseerr users
+const fetchOverseerrUsers = async () => {
+  loadingOverseerrUsers.value = true;
+  try {
+    const response = await fetch(`${config.apiUrl}/overseerr/users`);
+    if (!response.ok) throw new Error('Failed to load Overseerr users');
+    overseerrUsers.value = await response.json();
+  } catch (error) {
+    console.error('Error loading Overseerr users:', error);
+    overseerrUsers.value = [];
+    toastStore.show(`Failed to load Overseerr users: ${error.message}`, 'error');
+  } finally {
+    loadingOverseerrUsers.value = false;
+  }
+};
 // Load users from the server
 const fetchUsers = async () => {
   loadingUsers.value = true;
@@ -267,6 +313,53 @@ const updateSetting = async (group, name) => {
     }
   }
 
+  // Automatically manage request provider exclusivity
+  if (currentGroupDetails.base_provider?.value === 'request' && name === 'enabled' && valueToSave === true) {
+    const proxyProviders = ['jellyseerr', 'overseerr'];
+    const directProviders = ['radarr', 'sonarr'];
+
+    if (proxyProviders.includes(group)) {
+      // If a proxy provider (Jellyseerr/Overseerr) is enabled, disable all other request providers.
+      const providersToDisable = [...proxyProviders.filter(p => p !== group), ...directProviders];
+      for (const otherProvider of providersToDisable) {
+        if (settings.value[otherProvider]?.enabled?.value === true) {
+          const originalState = originalValues[otherProvider].enabled.value;
+          settings.value[otherProvider].enabled.value = false;
+          try {
+            await updateSetting(otherProvider, 'enabled');
+            toastStore.show(`${otherProvider.charAt(0).toUpperCase() + otherProvider.slice(1)} has been automatically disabled.`, 'info');
+          } catch (error) {
+            console.error(`Failed to automatically disable ${otherProvider}:`, error);
+            settings.value[otherProvider].enabled.value = originalState; // Revert on failure
+            toastStore.show(`Failed to automatically disable ${otherProvider}. Please disable it manually.`, 'error');
+            // Also revert the original action
+            settings.value[group][name].value = originalValues[group][name].value;
+            return; // Stop processing
+          }
+        }
+      }
+    } else if (directProviders.includes(group)) {
+      // If a direct provider (Radarr/Sonarr) is enabled, disable all proxy providers.
+      for (const proxyProvider of proxyProviders) {
+        if (settings.value[proxyProvider]?.enabled?.value === true) {
+          const originalState = originalValues[proxyProvider].enabled.value;
+          settings.value[proxyProvider].enabled.value = false;
+          try {
+            await updateSetting(proxyProvider, 'enabled');
+            toastStore.show(`${proxyProvider.charAt(0).toUpperCase() + proxyProvider.slice(1)} has been automatically disabled.`, 'info');
+          } catch (error) {
+            console.error(`Failed to automatically disable ${proxyProvider}:`, error);
+            settings.value[proxyProvider].enabled.value = originalState; // Revert on failure
+            toastStore.show(`Failed to automatically disable ${proxyProvider}. Please disable it manually.`, 'error');
+            // Also revert the original action
+            settings.value[group][name].value = originalValues[group][name].value;
+            return; // Stop processing
+          }
+        }
+      }
+    }
+  }
+
   try {
     const response = await fetch(`${config.apiUrl}/settings/${group}/${name}`, {
       method: 'PUT',
@@ -290,17 +383,32 @@ const updateSetting = async (group, name) => {
     originalValues[group][name].value = successfullyUpdatedValue;
 
     // If a setting for an enabled Gemini provider was changed (e.g., API key updated, or enabled set to true),
-    // attempt to fetch/refresh its models.
     if ((group === 'gemini' && settings.value.gemini?.enabled?.value === true) || (group === 'ollama' && settings.value.ollama?.enabled?.value === true)) {
         await fetchLlmModels();
     }
-    // If a Radarr setting was updated and its API key is set, refresh profiles
-    else if (group === 'radarr' && settings.value.radarr?.api_key?.value) {
+    // If a setting for a request provider was updated, refresh Radarr profiles if any are configured
+    if ((group === 'radarr' || group === 'jellyseerr' || group === 'overseerr') && (
+      (settings.value.radarr?.enabled?.value && settings.value.radarr?.api_key?.value) ||
+      (settings.value.jellyseerr?.enabled?.value && settings.value.jellyseerr?.api_key?.value) ||
+      (settings.value.overseerr?.enabled?.value && settings.value.overseerr?.api_key?.value)
+    )) {
         await fetchRadarrQualityProfiles();
     }
-    // If a Sonarr setting was updated and its API key is set, refresh profiles
-    else if (group === 'sonarr' && settings.value.sonarr?.api_key?.value) {
+    // If a setting for a request provider was updated, refresh Sonarr profiles if any are configured
+    if ((group === 'sonarr' || group === 'jellyseerr' || group === 'overseerr') && (
+      (settings.value.sonarr?.enabled?.value && settings.value.sonarr?.api_key?.value) ||
+      (settings.value.jellyseerr?.enabled?.value && settings.value.jellyseerr?.api_key?.value) ||
+      (settings.value.overseerr?.enabled?.value && settings.value.overseerr?.api_key?.value)
+    )) {
         await fetchSonarrQualityProfiles();
+    }
+    // If a setting for Jellyseerr was updated, refresh its users
+    if (group === 'jellyseerr' && settings.value.jellyseerr?.enabled?.value && settings.value.jellyseerr?.api_key?.value) {
+        await fetchJellyseerrUsers();
+    }
+    // If a setting for Overseerr was updated, refresh its users
+    if (group === 'overseerr' && settings.value.overseerr?.enabled?.value && settings.value.overseerr?.api_key?.value) {
+        await fetchOverseerrUsers();
     }
     // Specific action for Trakt when it's enabled
     if (group === 'trakt' && name === 'enabled' && successfullyUpdatedValue === true) {
@@ -435,16 +543,49 @@ const atLeastOneLibraryProviderEnabled = computed(() => {
   });
 });
 
+const scrollToHash = (hash) => {
+  if (!hash) return;
+  // Use nextTick to ensure the DOM has a chance to update before we try to find the element.
+  // This is especially useful for the watcher when navigating within the page.
+  nextTick(() => {
+    const element = document.querySelector(hash);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      // This warning is helpful for debugging if the element isn't found.
+      console.warn(`Anchor element '${hash}' not found.`);
+    }
+  });
+};
+
 onMounted(async () => { // Make onMounted async
   await loadSettings(); // Await the loading of settings
 
-  // Fetch Radarr quality profiles only if Radarr API key is set
-  if (settings.value?.radarr?.api_key?.value) {
+  // Fetch Radarr quality profiles if any relevant provider is configured
+  if (
+    (settings.value?.radarr?.enabled?.value && settings.value?.radarr?.api_key?.value) ||
+    (settings.value?.jellyseerr?.enabled?.value && settings.value?.jellyseerr?.api_key?.value) ||
+    (settings.value?.overseerr?.enabled?.value && settings.value?.overseerr?.api_key?.value)
+  ) {
     fetchRadarrQualityProfiles();
   }
-  // Fetch Sonarr quality profiles only if Sonarr API key is set
-  if (settings.value?.sonarr?.api_key?.value) {
+  // Fetch Sonarr quality profiles if any relevant provider is configured
+  if (
+    (settings.value?.sonarr?.enabled?.value && settings.value?.sonarr?.api_key?.value) ||
+    (settings.value?.jellyseerr?.enabled?.value && settings.value?.jellyseerr?.api_key?.value) ||
+    (settings.value?.overseerr?.enabled?.value && settings.value?.overseerr?.api_key?.value)
+  ) {
     fetchSonarrQualityProfiles();
+  }
+  
+  // Fetch Jellyseerr users if configured
+  if (settings.value?.jellyseerr?.enabled?.value && settings.value?.jellyseerr?.api_key?.value) {
+    fetchJellyseerrUsers();
+  }
+
+  // Fetch Overseerr users if configured
+  if (settings.value?.overseerr?.enabled?.value && settings.value?.overseerr?.api_key?.value) {
+    fetchOverseerrUsers();
   }
 
   // Fetch LLM models if any LLM provider is enabled
@@ -455,6 +596,21 @@ onMounted(async () => { // Make onMounted async
     await fetchUsers();
   }
   updateDatesFromRange(); // Initialize dates based on default selectedRange and fetch
+
+  // Scroll to anchor link if present in URL
+  // A small timeout is used to ensure all v-if/v-for elements
+  // based on the fetched settings have been rendered in the DOM. This fixes
+  // a race condition that can occur on a soft refresh (F5).
+  if (route.hash) {
+    setTimeout(() => scrollToHash(route.hash), 150);
+  }
+});
+
+// Watch for subsequent hash changes (e.g., clicking TOC links) for smooth in-page navigation.
+watch(() => route.hash, (newHash) => {
+  if (newHash) {
+    scrollToHash(newHash);
+  }
 });
 </script>
 
@@ -487,6 +643,14 @@ onMounted(async () => { // Make onMounted async
             <a href="#section-library-provider-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2 mt-2">Library Provider Settings</a>
             <ul class="space-y-1">
               <li v-for="(groupSettings, groupName) in libraryProviderSettings" :key="`toc-lib-provider-${groupName}`">
+                <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
+                  {{ groupName.replace(/_/g, ' ') }}
+                </a>
+              </li>
+            </ul>
+            <a href="#section-request-provider-settings" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2 mt-2">Request Provider Settings</a>
+            <ul class="space-y-1">
+              <li v-for="(groupSettings, groupName) in requestProviderSettings" :key="`toc-req-provider-${groupName}`">
                 <a :href="`#section-settings-${groupName}`" class="hover:text-amber-400 block capitalize pl-3 py-0.5 text-sm py-1">
                   {{ groupName.replace(/_/g, ' ') }}
                 </a>
@@ -652,42 +816,6 @@ onMounted(async () => { // Make onMounted async
                     ></textarea>
                   </div>
 
-                  <!-- Radarr Default Quality Profile ID Dropdown -->
-                  <template v-else-if="groupName === 'radarr' && settingName === 'default_quality_profile_id'">
-                    <select
-                      :id="groupName + '-' + settingName"
-                      v-model.number="settingDetails.value"
-                      @change="updateSetting(groupName, settingName)"
-                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                      :disabled="loadingRadarrProfiles"
-                    >
-                      <option :value="null">
-                        {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
-                      </option>
-                      <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
-                        {{ profile.name }}
-                      </option>
-                    </select>
-                  </template>
-
-                  <!-- Sonarr Default Quality Profile ID Dropdown -->
-                  <template v-else-if="groupName === 'sonarr' && settingName === 'default_quality_profile_id'">
-                    <select
-                      :id="groupName + '-' + settingName"
-                      v-model.number="settingDetails.value"
-                      @change="updateSetting(groupName, settingName)"
-                      class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
-                      :disabled="loadingSonarrProfiles"
-                    >
-                      <option :value="null">
-                        {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Select a profile...' }}
-                      </option>
-                      <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
-                        {{ profile.name }}
-                      </option>
-                    </select>
-                  </template>
-
                   <!-- Other input types -->
                   <input             
                     v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null"
@@ -788,6 +916,183 @@ onMounted(async () => { // Make onMounted async
                   </div>
                   <div class="mt-1 text-sm text-gray-500">
                     {{ settingDetails.description }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Request Provider Settings Section -->
+        <div id="section-request-provider-settings" class="mt-8">
+          <h2 class="text-2xl text-white font-semibold mb-6">Request Provider Settings</h2>
+          <div class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-6 text-sm text-gray-400 text-center">
+            <p>Configure your request providers like Radarr, Sonarr, Jellyseerr, and Overseerr.</p>
+            <p>Jellyseerr and Overseerr act as proxies; if one is enabled, it will be used for requests and all other request providers will be disabled automatically.</p>
+            <p>If you enable Radarr or Sonarr, Jellyseerr and Overseerr will be disabled automatically.</p>
+          </div>
+          <div v-if="Object.keys(requestProviderSettings).length > 0" class="space-y-8">
+            <div v-for="(groupSettings, groupName) in requestProviderSettings" :key="groupName" :id="`section-settings-${groupName}`" class="bg-gray-900 rounded-lg p-6 shadow-md">
+              <h3 class="text-xl text-white font-medium mb-4 capitalize">{{ groupName }}</h3>
+              <div class="space-y-4">
+                <div v-for="(settingDetails, settingName) in groupSettings" :key="settingName" class="flex flex-col">
+                  <div v-if="settingDetails.show != false">
+                    <label :for="groupName + '-' + settingName" class="text-gray-400 capitalize">
+                      {{ settingName.replace(/_/g, ' ') }}
+                      <span v-if="settingDetails.required" class="text-red-500 ml-1">*</span>
+                    </label>
+                    <!-- Radarr Default Quality Profile ID Dropdown -->
+                    <template v-if="groupName === 'radarr' && settingName === 'default_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingRadarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Sonarr Default Quality Profile ID Dropdown -->
+                    <template v-else-if="groupName === 'sonarr' && settingName === 'default_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingSonarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Jellyseerr Default Radarr Quality Profile ID Dropdown -->
+                    <template v-else-if="groupName === 'jellyseerr' && settingName === 'default_radarr_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingRadarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Jellyseerr Default Sonarr Quality Profile ID Dropdown -->
+                    <template v-else-if="groupName === 'jellyseerr' && settingName === 'default_sonarr_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingSonarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Jellyseerr Default User Dropdown -->
+                    <template v-else-if="groupName === 'jellyseerr' && settingName === 'default_user'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingJellyseerrUsers"
+                      >
+                        <option :value="null">
+                          {{ loadingJellyseerrUsers ? 'Loading users...' : 'Select a user...' }}
+                        </option>
+                        <option v-for="user in jellyseerrUsers" :key="user.id" :value="user.displayName">
+                          {{ user.displayName }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Overseerr Default Radarr Quality Profile ID Dropdown -->
+                    <template v-else-if="groupName === 'overseerr' && settingName === 'default_radarr_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingRadarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingRadarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in radarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Overseerr Default Sonarr Quality Profile ID Dropdown -->
+                    <template v-else-if="groupName === 'overseerr' && settingName === 'default_sonarr_quality_profile_id'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model.number="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingSonarrProfiles"
+                      >
+                        <option :value="null">
+                          {{ loadingSonarrProfiles ? 'Loading profiles...' : 'Default' }}
+                        </option>
+                        <option v-for="profile in sonarrQualityProfiles" :key="profile.id" :value="profile.id">
+                          {{ profile.name }}
+                        </option>
+                      </select>
+                    </template>
+
+                    <!-- Overseerr Default User Dropdown -->
+                    <template v-else-if="groupName === 'overseerr' && settingName === 'default_user'">
+                      <select
+                        :id="groupName + '-' + settingName"
+                        v-model="settingDetails.value"
+                        @change="updateSetting(groupName, settingName)"
+                        class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500"
+                        :disabled="loadingOverseerrUsers"
+                      >
+                        <option :value="null">
+                          {{ loadingOverseerrUsers ? 'Loading users...' : 'Select a user...' }}
+                        </option>
+                        <option v-for="user in overseerrUsers" :key="user.id" :value="user.displayName">
+                          {{ user.displayName }}
+                        </option>
+                      </select>
+                    </template>
+                    <!-- Other input types -->
+                    <input v-else-if="isNumberType(settingDetails.value) && typeof settingDetails.value !== 'undefined' && settingDetails.value !== null" :id="groupName + '-' + settingName" v-model.number="settingDetails.value" @change="updateSetting(groupName, settingName)" type="number" class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500">
+                    <input v-else-if="isBooleanType(settingDetails.value) && typeof settingDetails.value !== 'undefined'" :id="groupName + '-' + settingName" v-model="settingDetails.value" @change="updateSetting(groupName, settingName)" type="checkbox" :disabled="settingName === 'enabled' && !isProviderConfigured(groupName)" class="w-6 h-6 mx-2 bg-black border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 cursor-pointer">
+                    <input v-else :id="groupName + '-' + settingName" v-model="settingDetails.value" @change="updateSetting(groupName, settingName)" :type="settingName.includes('key') || settingName.includes('token') ? 'password' : 'text'" class="w-full p-2 bg-black text-white border border-gray-700 rounded-lg focus:outline-none focus:border-red-500" :placeholder="getPlaceholder(groupName, settingName)">
+                    <div v-if="settingName === 'enabled' && !isProviderConfigured(groupName)" class="mt-1 text-xs text-yellow-400">
+                      *Required fields are missing
+                    </div>
+                    <div class="mt-1 text-sm text-gray-500">
+                      {{ settingDetails.description }}
+                    </div>
                   </div>
                 </div>
               </div>

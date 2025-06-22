@@ -130,14 +130,15 @@ class RequestProviderBase(ABC):
         pass
 
     @abstractmethod
-    def lookup_media(self, **identifiers: Any) -> APIResponse:
+    def lookup_media(self, tmdb_id: int, media_type: Optional[str] = None) -> APIResponse:
         """
         Looks up a media item using various identifiers.
         Concrete implementations will determine which identifiers they support
         (e.g., tmdb_id for movies, tvdb_id for series, term for search).
 
         Args:
-            **identifiers: Keyword arguments representing identifiers (e.g., tmdb_id=123, term="Movie Title").
+            tmdb_id (int): TMDB ID for specific lookup.
+            media_type (str): "movie" or "tv", required if tmdb_id is used.
 
         Returns:
             APIResponse: An object containing the details of the found media item(s) or error information.

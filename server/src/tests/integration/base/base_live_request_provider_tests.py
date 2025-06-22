@@ -49,6 +49,11 @@ class BaseLiveRequestProviderTests:
         if live_provider.PROVIDER_NAME == 'jellyseerr':
             assert 'manages quality profiles internally' in response.message
             return
+        
+        # Overseerr returns an empty list with a message, which is valid.
+        if live_provider.PROVIDER_NAME == 'overseerr':
+            assert 'manages quality profiles internally' in response.message
+            return
 
         # For other providers, we expect profiles.
         assert len(profiles) > 0, "Expected at least one quality profile."
@@ -64,11 +69,7 @@ class BaseLiveRequestProviderTests:
         if live_provider.PROVIDER_NAME == 'sonarr':
             pytest.skip("Sonarr does not handle movies.")
 
-        # Jellyseerr's lookup needs a media_type.
-        if live_provider.PROVIDER_NAME == 'jellyseerr':
-            response = live_provider.lookup_media(tmdb_id=movie_tmdb_id, media_type='movie')
-        else: # Radarr
-            response = live_provider.lookup_media(tmdb_id=movie_tmdb_id)
+        response = live_provider.lookup_media(tmdb_id=movie_tmdb_id, media_type='movie')
         
         assert isinstance(response, APIResponse)
         assert response.success, f"Movie lookup failed: {response.message}"
@@ -85,11 +86,7 @@ class BaseLiveRequestProviderTests:
         if live_provider.PROVIDER_NAME == 'radarr':
             pytest.skip("Radarr does not handle TV shows.")
 
-        # Jellyseerr's lookup needs a media_type.
-        if live_provider.PROVIDER_NAME == 'jellyseerr':
-            response = live_provider.lookup_media(tmdb_id=tv_tmdb_id, media_type='tv')
-        else: # Sonarr
-            response = live_provider.lookup_media(tmdb_id=tv_tmdb_id)
+        response = live_provider.lookup_media(tmdb_id=tv_tmdb_id, media_type='tv')
 
         assert isinstance(response, APIResponse)
         assert response.success, f"TV show lookup failed: {response.message}"

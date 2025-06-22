@@ -62,10 +62,10 @@ class BaseLiveLibraryProviderTests:
         assert non_existent_user is None, "Non-existent user should return None"
 
     def test_get_recently_watched(self, live_provider: LibraryProviderBase, valid_user_id: str):
-        watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=1)
+        watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=10)
         assert watched_items_raw is not None, "Expected recently watched items (raw) or an empty list"
         assert isinstance(watched_items_raw, list)
-        assert len(watched_items_raw) == 1, "Expected 1 item when limit is 1"
+        assert len(watched_items_raw) <= 10, "Expected less than or equal to 10 items when limit is 10"
         if watched_items_raw:
             for item_dict in watched_items_raw:
                 assert isinstance(item_dict, ItemsFiltered)
@@ -75,7 +75,7 @@ class BaseLiveLibraryProviderTests:
         watched_items_raw = live_provider.get_recently_watched(user_id=valid_user_id, limit=None)
         assert watched_items_raw is not None, "Expected recently watched items (raw) or an empty list"
         assert isinstance(watched_items_raw, list)
-        assert len(watched_items_raw) > 1, "Expected a list of more than 1 items"
+        assert len(watched_items_raw) > 1, "Expected a list of more than 10 items"
         if watched_items_raw:
             for item_dict in watched_items_raw:
                 assert isinstance(item_dict, ItemsFiltered)

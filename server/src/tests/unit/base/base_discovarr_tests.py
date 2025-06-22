@@ -8,8 +8,8 @@ from providers.plex import PlexProvider as ActualPlexProvider
 from providers.jellyfin import JellyfinProvider as ActualJellyfinProvider
 from providers.trakt import TraktProvider as ActualTraktProvider
 from services.image_cache import ImageCacheService as ActualImageCacheService
-from services.radarr import Radarr as ActualRadarrService
-from services.sonarr import Sonarr as ActualSonarrService
+from providers.radarr import RadarrProvider as ActualRadarrService
+from providers.sonarr import SonarrProvider as ActualSonarrService
 from providers.gemini import GeminiProvider as ActualGeminiProvider
 from providers.ollama import OllamaProvider as ActualOllamaProvider
 from services.tmdb import TMDB as ActualTMDBService
@@ -70,8 +70,8 @@ def mocked_discovarr_instance(tmp_path):
          patch('discovarr.PlexProvider', new_callable=MagicMock) as MockPlexProviderClass, \
          patch('discovarr.JellyfinProvider', new_callable=MagicMock) as MockJellyfinProviderClass, \
          patch('discovarr.TraktProvider', new_callable=MagicMock) as MockTraktProviderClass, \
-         patch('discovarr.Radarr', new_callable=MagicMock) as MockRadarrClass, \
-         patch('discovarr.Sonarr', new_callable=MagicMock) as MockSonarrClass, \
+         patch('discovarr.RadarrProvider', new_callable=MagicMock) as MockRadarrClass, \
+         patch('discovarr.SonarrProvider', new_callable=MagicMock) as MockSonarrClass, \
          patch('discovarr.GeminiProvider', new_callable=MagicMock) as MockGeminiProviderClass, \
          patch('discovarr.OllamaProvider', new_callable=MagicMock) as MockOllamaProviderClass, \
          patch('discovarr.TMDB', new_callable=MagicMock) as MockTMDBClass, \

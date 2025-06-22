@@ -1,27 +1,27 @@
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from base.request_provider_base import RequestProviderBase
 from services.response import APIResponse 
 from services.models import SettingType 
 
-class JellyseerrProvider(RequestProviderBase):
-    PROVIDER_NAME = "jellyseerr"
+class OverseerrProvider(RequestProviderBase):
+    PROVIDER_NAME = "overseerr"
 
     def __init__(self, url: str, api_key: str):
-        """Initialize Jellyseerr client.
+        """Initialize Overseerr client.
 
         Args:
-            url (str): The URL of your Jellyseerr server (e.g., "http://your-jellyseerr-server:5055")
-            api_key (str): Your Jellyseerr API key
+            url (str): The URL of your Overseerr server (e.g., "http://your-overseerr-server:5055")
+            api_key (str): Your Overseerr API key
         """
         super().__init__(url=url, api_key=api_key, api_key_header_name="X-Api-Key", api_base_path="api/v1")
         self.logger = logging.getLogger(__name__)
 
     def get_users(self, displayName: Optional[str] = None) -> APIResponse:
         """
-        Retrieves all users from Jellyseerr.
+        Retrieves all users from Overseerr.
 
         Returns:
             APIResponse: An object containing the list of users or error information.
@@ -32,7 +32,7 @@ class JellyseerrProvider(RequestProviderBase):
             "take": 100
         }
         
-        self.logger.info("Fetching all users from Jellyseerr.")
+        self.logger.info("Fetching all users from Overseerr.")
         response = self._make_request("GET", "user", params=params)
         if response.success and isinstance(response.data, dict):
             all_users = response.data.get("results", [])
@@ -45,8 +45,8 @@ class JellyseerrProvider(RequestProviderBase):
             else:
                 response.data = all_users
         elif response.success and not isinstance(response.data, dict):
-            self.logger.warning(f"Jellyseerr /user endpoint returned unexpected data format: {type(response.data)}")
-            return APIResponse(success=False, message="Unexpected data format from Jellyseerr /user endpoint.", status_code=response.status_code, data=response.data)
+            self.logger.warning(f"Overseerr /user endpoint returned unexpected data format: {type(response.data)}")
+            return APIResponse(success=False, message="Unexpected data format from Overseerr /user endpoint.", status_code=response.status_code, data=response.data)
         return response
 
     # --- Implementation of RequestProviderBase abstract methods ---
@@ -57,10 +57,8 @@ class JellyseerrProvider(RequestProviderBase):
         Supports 'term' for general search, or 'tmdb_id' and 'media_type' for specific discovery.
 
         Args:
-            **identifiers: Keyword arguments. Expected:
-                           - term (str): Search term for general lookup.
-                           - tmdb_id (int): TMDB ID for specific lookup.
-                           - media_type (str): "movie" or "tv", required if tmdb_id is used.
+            tmdb_id (int): TMDB ID for specific lookup.
+            media_type (str): "movie" or "tv", required if tmdb_id is used.
 
         Returns:
             APIResponse: An object containing the details of the found media item(s) or error information.
@@ -71,7 +69,8 @@ class JellyseerrProvider(RequestProviderBase):
                 msg = "Invalid media_type. Must be 'movie' or 'tv'."
                 self.logger.error(msg)
                 return APIResponse(success=False, message=msg, status_code=400)
-            self.logger.info(f"Jellyseerr searching for tmdb_id: {tmdb_id} with media_type: {media_type}")
+            self.logger.info(f"Overseerr searching for tmdb_id: {tmdb_id} with media_type: {media_type}")
+            # Overseerr uses /movie/{tmdbId} and /tv/{tmdbId} for direct lookup
             search_response = self._make_request("GET", f"{media_type}/{tmdb_id}")
 
             if search_response.success and isinstance(search_response.data, dict):
@@ -80,13 +79,13 @@ class JellyseerrProvider(RequestProviderBase):
                     return APIResponse(success=True, data=results, status_code=search_response.status_code)
                 
                 # If no item with matching mediaType was found
-                msg = f"No {media_type} found for tmdb_id: {tmdb_id} with media_type: {media_type} in Jellyseerr search results."
+                msg = f"No {media_type} found for tmdb_id: {tmdb_id} with media_type: {media_type} in Overseerr search results."
                 self.logger.info(msg)
                 return APIResponse(success=False, message=msg, status_code=404, data=[]) # Return empty list for data
             elif not search_response.success:
                 return search_response # Propagate error from _make_request
         else:
-            msg = "Either 'title' or both 'tmdb_id' and 'media_type' must be provided for lookup."
+            msg = "Both 'tmdb_id' and 'media_type' must be provided for lookup."
             self.logger.error(msg)
             return APIResponse(success=False, message=msg, status_code=400)
 
@@ -94,48 +93,48 @@ class JellyseerrProvider(RequestProviderBase):
         self,
         tmdb_id: int,
         media_type: str,
-        quality_profile_id: Optional[int] = None, # Mapped to target_profile_id
-        root_folder_path: Optional[str] = None,   # Mapped to target_root_folder
-        monitor: Optional[bool] = True,
-        add_options: Optional[Dict[str, Any]] = None       # Can be used for is_4k, seasons, user_id, serverId
+        quality_profile_id: Optional[int] = None, # Mapped to profileId
+        root_folder_path: Optional[str] = None,   # Mapped to rootFolder
+        monitor: Optional[bool] = True, # Not directly used in Overseerr's request payload
+        add_options: Optional[Dict[str, Any]] = None       # Can be used for is_4k, seasons, userId, serverId
     ) -> APIResponse:
         """
-        Adds a new media item request to Jellyseerr.
-        This adapts the generic add_media interface to Jellyseerr's request_media functionality.
+        Adds a new media item request to Overseerr.
+        This adapts the generic add_media interface to Overseerr's request_media functionality.
 
         Args:
-            item_info (Dict[str, Any]): Metadata of the item to add.
-                                        Expected to contain 'mediaType' and 'id' (as tmdb_id).
-            quality_profile_id (Optional[int]): The Jellyseerr profile ID to use.
+            tmdb_id (int): The TMDB ID of the media to add.
+            media_type (str): Type of media ('movie' or 'tv').
+            quality_profile_id (Optional[int]): The Overseerr profile ID to use.
             root_folder_path (Optional[str]): The specific root folder path.
-            monitoring_options (Optional[Dict[str, Any]]): Options for monitoring (largely ignored by Jellyseerr's direct request).
-            add_options (Optional[Dict[str, Any]]): Additional options for Jellyseerr:
+            monitor (Optional[bool]): Not directly used by Overseerr's request endpoint.
+            add_options (Optional[Dict[str, Any]]): Additional options for Overseerr:
                                          'is_4k' (bool), 'seasons' (list[int]),
-                                         'user_id' (int), 'target_server_id' (int).
+                                         'userId' (int), 'serverId' (int).
 
         Returns:
             APIResponse: Result of the request operation.
         """
         add_opts = add_options or {}
-        media_id = None
         is_4k = add_opts.get("is_4k", False)
-        target_server_id = add_opts.get("target_server_id", 0)
+        target_server_id = add_opts.get("serverId", 0) # Overseerr uses serverId
         target_profile_id = quality_profile_id
         target_root_folder = root_folder_path
-        user_id = add_opts.get("user_id")
+        user_id = add_opts.get("userId") # Overseerr uses userId
 
         if media_type not in ["movie", "tv"]:
             msg = "Invalid media_type. Must be 'movie' or 'tv'."
             self.logger.error(msg)
             return APIResponse(success=False, message=msg, status_code=400, error={"details": msg})
         
-        # Lookup the media by title, Jellyseerr /request requires the internal mediaId
+        # Lookup the media by tmdb_id and media_type to get necessary details like tvdbId for TV shows
         lookup = self.lookup_media(tmdb_id=tmdb_id, media_type=media_type)
         if lookup.success:
             lookup_data = lookup.data
             if lookup_data:
-                self.logger.debug(f"Using lookup data for Jellyseerr request: {json.dumps(lookup_data, indent=2)}")
-                tmdb_id = lookup_data.get("id")  # Assuming 'id' is the TMDB ID in Jellyseerr's response
+                self.logger.debug(f"Using lookup data for Overseerr request: {json.dumps(lookup_data, indent=2)}")
+                # Overseerr's /request endpoint expects mediaIds as a list of TMDB IDs
+                # The lookup_data.get("id") should already be the TMDB ID
                 tvdb_id = None
                 media_info = lookup_data.get("mediaInfo")
                 
@@ -149,7 +148,7 @@ class JellyseerrProvider(RequestProviderBase):
                     tvdb_id = media_info.get("tvdbId")
                 else:
                     self.logger.debug("No media info from lookup.")
-
+                    
                 # Extract season numbers if media_type is 'tv' and seasons data is available
                 seasons_to_request = []
                 if media_type == "tv" and lookup_data.get("seasons"):
@@ -159,7 +158,7 @@ class JellyseerrProvider(RequestProviderBase):
 
             payload: Dict[str, Any] = {
                 "mediaType": media_type,
-                "mediaId": tmdb_id, # Jellyseerr uses mediaId for tmdb_id
+                "mediaId": tmdb_id, # Overseerr expects a list of media IDs
                 "is4k": is_4k,
             }
 
@@ -171,83 +170,84 @@ class JellyseerrProvider(RequestProviderBase):
             if target_profile_id is not None:
                 payload["profileId"] = target_profile_id
             if target_root_folder is not None:
-                payload["rootFolder"] = target_root_folder # Or "rootFolderPath" - check Jellyseerr API docs
+                payload["rootFolder"] = target_root_folder # Overseerr uses rootFolder
 
             if media_type == "tv":
                 if tvdb_id is not None:
-                    payload["tvdbId"] = tvdb_id
+                    payload["tvdbId"] = tvdb_id # Optional, but good to include if available
                 
                 if seasons_to_request: # Add seasons to payload if any were extracted
                     payload["seasons"] = seasons_to_request
 
-            self.logger.info(f"Jellyseerr request payload: {json.dumps(payload, indent=2)}")
+            self.logger.info(f"Overseerr request payload: {json.dumps(payload, indent=2)}")
             # The endpoint for creating requests is typically just "/request"
             api_response = self._make_request("POST", "request", data=payload)
 
             if not api_response.success:
                 # The error details from _make_request are already in api_response.error
-                self.logger.error(f"Failed to request media via Jellyseerr {media_type}/{tmdb_id}: {api_response.message} - {api_response.error.get('details') if api_response.error else 'No details'}", exc_info=True)
+                self.logger.error(f"Failed to request media via Overseerr {media_type}/{tmdb_id}: {api_response.message} - {api_response.error.get('details') if api_response.error else 'No details'}", exc_info=True)
                 return api_response
 
-            self.logger.info(f"Jellyseerr request successful for {media_type}/{tmdb_id}. Response: {api_response.data}")
+            self.logger.info(f"Overseerr request successful for {media_type}/{tmdb_id}. Response: {api_response.data}")
             return api_response
         else:
-            self.logger.error(f"Failed to lookup media via Jellyseerr {media_type}/{tmdb_id}: {lookup.message} - {lookup.error.get('details') if lookup.error else 'No details'}", exc_info=True)
-            return None
+            self.logger.error(f"Failed to lookup media via Overseerr {media_type}/{tmdb_id}: {lookup.message} - {lookup.error.get('details') if lookup.error else 'No details'}", exc_info=True)
+            return APIResponse(success=False, message=f"Failed to lookup media: {lookup.message}", status_code=lookup.status_code, error=lookup.error)
 
     def delete_media(self, request_id: int) -> APIResponse:
         """
-        Deletes a specific media request from Jellyseerr by its request ID.
+        Deletes a specific media request from Overseerr by its request ID.
 
         Args:
-            request_id (int): The unique ID of the request to delete in Jellyseerr.
+            request_id (int): The unique ID of the request to delete in Overseerr.
 
         Returns:
             APIResponse: Result of the deletion operation.
         """
-        self.logger.info(f"Attempting to delete Jellyseerr request with ID: {request_id}")
+        self.logger.info(f"Attempting to delete Overseerr request with ID: {request_id}")
         delete_response = self._make_request("DELETE", f"request/{request_id}")
 
         if delete_response.success:
-            self.logger.info(f"Successfully deleted Jellyseerr request ID: {request_id}")
+            self.logger.info(f"Successfully deleted Overseerr request ID: {request_id}")
         else:
-            self.logger.error(f"Failed to delete Jellyseerr request ID: {request_id}. Error: {delete_response.message}")
+            self.logger.error(f"Failed to delete Overseerr request ID: {request_id}. Error: {delete_response.message}")
         
         return delete_response
     
     def get_quality_profiles(self) -> APIResponse:
         """
-        Retrieves quality profiles. Jellyseerr manages these internally
+        Retrieves quality profiles. Overseerr manages these internally
         based on its Sonarr/Radarr configurations, so this method
         indicates that direct profile listing like Sonarr/Radarr isn't applicable.
         """
-        self.logger.info("Jellyseerr manages quality profiles internally; direct listing is not applicable.")
+        self.logger.info("Overseerr manages quality profiles internally; direct listing is not applicable.")
         return APIResponse(
             success=True, # Or False, depending on how "not applicable" should be treated
             data=[],
-            message="Jellyseerr manages quality profiles internally via its Sonarr/Radarr configurations."
+            message="Overseerr manages quality profiles internally via its Sonarr/Radarr configurations."
         )
 
     def get_radarr_quality_profiles(self, default_profile_id: Optional[int] = None) -> APIResponse:
         """
-        Retrieves Radarr quality profiles from the default configured Radarr server in Jellyseerr.
+        Retrieves Radarr quality profiles from the default configured Radarr server in Overseerr.
         """
-        self.logger.info("Fetching configured Radarr servers from Jellyseerr.")
+        self.logger.info("Fetching configured Radarr servers from Overseerr.")
+        # Overseerr uses /settings/radarr endpoint
         radarr_servers_response = self._make_request("GET", "service/radarr")
 
         if not radarr_servers_response.success:
-            self.logger.error(f"Failed to fetch Radarr servers from Jellyseerr: {radarr_servers_response.message}")
+            self.logger.error(f"Failed to fetch Radarr servers from Overseerr: {radarr_servers_response.message}")
             return radarr_servers_response
 
         if not radarr_servers_response.data or not isinstance(radarr_servers_response.data, list):
-            msg = "No Radarr servers configured in Jellyseerr or unexpected response format."
+            msg = "No Radarr servers configured in Overseerr or unexpected response format."
             self.logger.warning(msg)
             return APIResponse(success=False, message=msg, status_code=404)
 
         default_server = next((server for server in radarr_servers_response.data if server.get("isDefault")), None)
         
         if not default_server:
-            msg = "No default Radarr server found in Jellyseerr configuration."
+            msg = "No default Radarr server found in Overseerr configuration."
             self.logger.warning(msg)
             return APIResponse(success=False, message=msg, status_code=404)
 
@@ -260,6 +260,7 @@ class JellyseerrProvider(RequestProviderBase):
         self.logger.info(f"Found default Radarr server '{default_server.get('name')}' (ID: {radarr_id}). Fetching its detailed configuration to extract quality profiles.")
         
         # Make a new call to get the detailed server configuration
+        # Overseerr uses /service/radarr/{id} endpoint
         detailed_server_response = self._make_request("GET", f"service/radarr/{radarr_id}")
 
         if not detailed_server_response.success:
@@ -289,17 +290,18 @@ class JellyseerrProvider(RequestProviderBase):
 
     def get_sonarr_quality_profiles(self, default_profile_id: Optional[int] = None) -> APIResponse:
         """
-        Retrieves Sonarr quality profiles from the default configured Sonarr server in Jellyseerr.
+        Retrieves Sonarr quality profiles from the default configured Sonarr server in Overseerr.
         """
-        self.logger.info("Fetching configured Sonarr servers from Jellyseerr.")
+        self.logger.info("Fetching configured Sonarr servers from Overseerr.")
+        # Overseerr uses /settings/sonarr endpoint
         sonarr_servers_response = self._make_request("GET", "service/sonarr")
 
         if not sonarr_servers_response.success:
-            self.logger.error(f"Failed to fetch Sonarr servers from Jellyseerr: {sonarr_servers_response.message}")
+            self.logger.error(f"Failed to fetch Sonarr servers from Overseerr: {sonarr_servers_response.message}")
             return sonarr_servers_response
 
         if not sonarr_servers_response.data or not isinstance(sonarr_servers_response.data, list):
-            msg = "No Sonarr servers configured in Jellyseerr or unexpected response format."
+            msg = "No Sonarr servers configured in Overseerr or unexpected response format."
             self.logger.warning(msg)
             return APIResponse(success=False, message=msg, status_code=404)
 
@@ -308,7 +310,7 @@ class JellyseerrProvider(RequestProviderBase):
         self.logger.debug(f"Default Sonarr server: {default_server}")
         
         if not default_server:
-            msg = "No default Sonarr server found in Jellyseerr configuration."
+            msg = "No default Sonarr server found in Overseerr configuration."
             self.logger.warning(msg)
             return APIResponse(success=False, message=msg, status_code=404)
 
@@ -321,6 +323,7 @@ class JellyseerrProvider(RequestProviderBase):
         self.logger.info(f"Found default Sonarr server '{default_server.get('name')}' (ID: {sonarr_id}). Fetching its detailed configuration to extract quality profiles.")
 
         # Make a new call to get the detailed server configuration
+        # Overseerr uses /service/sonarr/{id} endpoint
         detailed_server_response = self._make_request("GET", f"service/sonarr/{sonarr_id}")
 
         if not detailed_server_response.success:
@@ -351,13 +354,13 @@ class JellyseerrProvider(RequestProviderBase):
     @classmethod
     def get_default_settings(cls) -> Dict[str, Dict[str, Any]]:
         """
-        Returns the default settings for the Jellyseerr provider.
+        Returns the default settings for the Overseerr provider.
         """
         return {
-            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Jellyseerr integration."},
-            "url": {"value": "http://jellyseerr:5055", "type": SettingType.URL, "description": "Jellyseerr server URL (e.g., http://localhost:5055).", "required": True},
-            "api_key": {"value": None, "type": SettingType.STRING, "description": "Jellyseerr API key.", "required": True},
-            "default_user": {"value": None, "type": SettingType.STRING, "description": "Jellyseerr Default User to use when making requests, refers to the Jellyseerr displayName property.", "required": True},
+            "enabled": {"value": False, "type": SettingType.BOOLEAN, "description": "Enable or disable Overseerr integration."},
+            "url": {"value": "http://overseerr:5055", "type": SettingType.URL, "description": "Overseerr server URL (e.g., http://localhost:5055).", "required": True},
+            "api_key": {"value": None, "type": SettingType.STRING, "description": "Overseerr API key.", "required": True},
+            "default_user": {"value": None, "type": SettingType.STRING, "description": "Overseerr Default User to use when making requests, refers to the Overseerr displayName property.", "required": True},
             "default_radarr_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Default Radarr quality profile ID"},
             "default_sonarr_quality_profile_id": {"value": None, "type": SettingType.INTEGER, "description": "Default Sonarr quality profile ID"},
             "base_provider": {"value": "request", "type": SettingType.STRING, "show": False, "description": "Base Provider Type (e.g., request, library, llm)."},

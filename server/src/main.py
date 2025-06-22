@@ -215,6 +215,32 @@ async def get_all_provider_users(
         raise HTTPException(status_code=503, detail="No library providers enabled or error fetching users.")
     return users
 
+@api_app.get("/overseerr/users")
+async def get_overseerr_users(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to retrieve all users from Overseerr.
+    """
+    users = discovarr.get_overseerr_users()
+    if users is None:
+        # This could happen if Overseerr is not configured or if there's an API error
+        raise HTTPException(status_code=503, detail="Overseerr is not enabled or an error occurred while fetching users.")
+    return users
+
+@api_app.get("/jellyseerr/users")
+async def get_jellyseerr_users(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Endpoint to retrieve all users from Jellyseerr.
+    """
+    users = discovarr.get_jellyseerr_users()
+    if users is None:
+        # This could happen if Jellyseerr is not configured or if there's an API error
+        raise HTTPException(status_code=503, detail="Jellyseerr is not enabled or an error occurred while fetching users.")
+    return users
+
 @api_app.get("/sync_watch_history")
 async def sync_watch_history(
     limit: Optional[int] = None,

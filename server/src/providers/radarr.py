@@ -63,7 +63,7 @@ class RadarrProvider(RequestProviderBase):
             
         return APIResponse(success=True, data=simplified_profiles, status_code=profiles_response.status_code)
 
-    def lookup_media(self, tmdb_id: int) -> APIResponse:
+    def lookup_media(self, tmdb_id: int, media_type: Optional[str] = "movie") -> APIResponse:
         """Look up movie details from TMDB ID.
         
         Args:

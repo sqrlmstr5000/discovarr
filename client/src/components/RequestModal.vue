@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { config } from '../config';
 import { useToastStore } from '@/stores/toast';
 const toastStore = useToastStore();
@@ -15,6 +15,14 @@ const profiles = ref([]);
 const selectedProfile = ref('');
 const requesting = ref(false);
 const saveAsDefault = ref(false); // New ref for the checkbox
+
+const closeModal = () => emit('close');
+
+const handleEscapeKey = (event) => {
+  if (event.key === 'Escape' && props.show) {
+    closeModal();
+  }
+};
 
 // Reset selected profile when modal closes
 watch(() => props.show, (newValue) => {
@@ -107,6 +115,13 @@ const handleRequest = async () => {
     requesting.value = false;
   }
 };
+
+onMounted(() => {
+  document.addEventListener('keydown', handleEscapeKey);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEscapeKey);
+});
 
 </script>
 

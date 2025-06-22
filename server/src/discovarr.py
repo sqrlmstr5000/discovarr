@@ -14,6 +14,7 @@ from services.models import ItemsFiltered, LibraryUser, Media # Import Media mod
 from providers.radarr import RadarrProvider 
 from providers.sonarr import SonarrProvider
 from providers.jellyseerr import JellyseerrProvider # Import JellyseerrProvider
+from providers.overseerr import OverseerrProvider
 from services.tmdb import TMDB
 from services.database import Database
 from services.scheduler import DiscovarrScheduler
@@ -94,6 +95,14 @@ class Discovarr:
         self.jellyseerr_url = None
         self.jellyseerr_api_key = None
         self.jellyseerr_default_user = None
+        self.jellyseerr_default_radarr_quality_profile_id = None
+        self.jellyseerr_default_sonarr_quality_profile_id = None
+        self.overseerr_enabled = None
+        self.overseerr_url = None
+        self.overseerr_api_key = None
+        self.overseerr_default_user = None
+        self.overseerr_default_radarr_quality_profile_id = None
+        self.overseerr_default_sonarr_quality_profile_id = None
         # self.trakt_access_token = None # Access token might be managed via OAuth flow
         self.auto_media_save = None
         self.system_prompt = None 
@@ -111,6 +120,7 @@ class Discovarr:
         self.ollama = None
         self.trakt = None # Initialize Trakt service instance
         self.jellyseerr = None # Initialize Jellyseerr service instance
+        self.overseerr = None # Initialize Overseerr service instance
         self.llm_service = None # Initialize LLMService instance
         self.tmdb = None
         self.research_service = None # Initialize ResearchService instance
@@ -183,6 +193,14 @@ class Discovarr:
         self.jellyseerr_url = self.settings.get("jellyseerr", "url")
         self.jellyseerr_api_key = self.settings.get("jellyseerr", "api_key")
         self.jellyseerr_default_user = self.settings.get("jellyseerr", "default_user")
+        self.jellyseerr_default_radarr_quality_profile_id = self.settings.get("jellyseerr", "default_radarr_quality_profile_id")
+        self.jellyseerr_default_sonarr_quality_profile_id = self.settings.get("jellyseerr", "default_sonarr_quality_profile_id")
+        self.overseerr_enabled = self.settings.get("overseerr", "enabled")
+        self.overseerr_url = self.settings.get("overseerr", "url")
+        self.overseerr_api_key = self.settings.get("overseerr", "api_key")
+        self.overseerr_default_user = self.settings.get("overseerr", "default_user")
+        self.overseerr_default_radarr_quality_profile_id = self.settings.get("overseerr", "default_radarr_quality_profile_id")
+        self.overseerr_default_sonarr_quality_profile_id = self.settings.get("overseerr", "default_sonarr_quality_profile_id")
         self.tmdb_api_key = self.settings.get("tmdb", "api_key")
         self.system_prompt = self.settings.get("app", "system_prompt")
         
@@ -209,6 +227,10 @@ class Discovarr:
             self.enabled_providers["request"].append("radarr")
         if self.sonarr_enabled:
             self.enabled_providers["request"].append("sonarr")
+        if self.jellyseerr_enabled:
+            self.enabled_providers["request"].append("jellyseerr")
+        if self.overseerr_enabled:
+            self.enabled_providers["request"].append("overseerr")
             
         # Log enabled providers for each category
         any_providers_enabled = False
@@ -230,6 +252,7 @@ class Discovarr:
         self.jellyfin = None # Reset before potential re-init
         self.trakt = None # Reset before potential re-init
         self.jellyseerr = None # Reset before potential re-init
+        self.overseerr = None # Reset before potential re-init
 
         if self.plex_enabled and self.plex_url and self.plex_api_key:
              self.plex = PlexProvider(
@@ -308,7 +331,17 @@ class Discovarr:
         elif self.jellyseerr_enabled:
             self.logger.warning("Jellyseerr is enabled but URL or API key is missing. Jellyseerr service not initialized.")
         else:
-            self.logger.info("Jellyseerr integration is disabled.")
+            self.logger.info("Jellyseerr integration is disabled.") 
+
+        if self.overseerr_enabled and self.overseerr_url and self.overseerr_api_key:
+            self.overseerr = OverseerrProvider(
+                url=self.overseerr_url,
+                api_key=self.overseerr_api_key
+            )
+            self.logger.info("Overseerr service initialized.")
+        elif self.overseerr_enabled:
+            self.logger.warning("Overseerr is enabled but URL or API key is missing. Overseerr service not initialized.")
+        else:
             self.logger.info("Trakt integration is disabled or missing Client ID/Secret.")
         self.tmdb = TMDB(tmdb_api_key=self.tmdb_api_key)
 
@@ -375,7 +408,11 @@ class Discovarr:
                 raise ValueError("Jellyseerr URL is required when Jellyseerr integration is enabled.")
             if not self.jellyseerr_api_key:
                 raise ValueError("Jellyseerr API key is required when Jellyseerr integration is enabled.")
-                raise ValueError("Trakt Client Secret is required when Trakt integration is enabled.")
+        if self.overseerr_enabled:
+            if not self.overseerr_url:
+                raise ValueError("Overseerr URL is required when Overseerr integration is enabled.")
+            if not self.overseerr_api_key:
+                raise ValueError("Overseerr API key is required when Overseerr integration is enabled.")
    
     def get_prompt(self, limit: int, media_name: Optional[str] = None, template_string: Optional[str] = None) -> str:
         """
@@ -1004,7 +1041,39 @@ class Discovarr:
         """
         self.logger.info(f"Requesting {media_type} with TMDB ID: {tmdb_id}, QP ID: {quality_profile_id}, Save Default: {save_default}")
 
-        if self.jellyseerr_enabled:
+        if self.overseerr_enabled and self.overseerr:
+            self.logger.info("Overseerr is configured, attempting request via Overseerr.")
+            
+            # Handle saving the default quality profile ID for Overseerr
+            if save_default and quality_profile_id is not None:
+                if media_type == "movie":
+                    self.logger.info(f"Saving Overseerr default Radarr quality profile ID: {quality_profile_id}")
+                    self.settings.set("overseerr", "default_radarr_quality_profile_id", quality_profile_id)
+                elif media_type == "tv":
+                    self.logger.info(f"Saving Overseerr default Sonarr quality profile ID: {quality_profile_id}")
+                    self.settings.set("overseerr", "default_sonarr_quality_profile_id", quality_profile_id)
+
+            add_opts = {}
+            if self.overseerr_default_user:
+                self.logger.info(f"Attempting to find Overseerr user ID for displayName: {self.overseerr_default_user}")
+                user_lookup_response = self.overseerr.get_users(displayName=self.overseerr_default_user)
+                if user_lookup_response.success and user_lookup_response.data and isinstance(user_lookup_response.data, list) and len(user_lookup_response.data) > 0:
+                    user_data_item = user_lookup_response.data[0]
+                    if isinstance(user_data_item, dict) and user_data_item.get("id"):
+                        add_opts["userId"] = user_data_item.get("id")
+                        self.logger.info(f"Found Overseerr user ID: {add_opts['userId']} for {self.overseerr_default_user}")
+                    else:
+                        self.logger.warning(f"Overseerr user '{self.overseerr_default_user}' found, but ID is missing or data format unexpected: {user_data_item}")
+                elif user_lookup_response.success and (not user_lookup_response.data or (isinstance(user_lookup_response.data, list) and len(user_lookup_response.data) == 0)):
+                    self.logger.warning(f"Overseerr user '{self.overseerr_default_user}' not found.")
+                else: # Failed lookup
+                    self.logger.warning(f"Could not find Overseerr user ID for displayName: {self.overseerr_default_user}. Error: {user_lookup_response.message}")
+            
+            return self.overseerr.add_media(
+                tmdb_id=int(tmdb_id), media_type=media_type, quality_profile_id=quality_profile_id, add_options=add_opts
+            )
+
+        elif self.jellyseerr_enabled and self.jellyseerr:
             self.logger.info("Jellyseerr is configured, attempting request via Jellyseerr.")
             
             # Handle saving the default quality profile ID for Jellyseerr
@@ -1032,18 +1101,14 @@ class Discovarr:
                 else: # Failed lookup
                     self.logger.warning(f"Could not find Jellyseerr user ID for displayName: {self.jellyseerr_default_user}. Error: {user_lookup_response.message}")
             
-            jellyseerr_response = self.jellyseerr.add_media(
-                tmdb_id=tmdb_id,
+            return self.jellyseerr.add_media(
+                tmdb_id=int(tmdb_id),
                 media_type=media_type,
                 quality_profile_id=quality_profile_id,
                 add_options=add_opts
             )
-            self.logger.debug(f"Jellyseerr Add Media Response: {jellyseerr_response.data if jellyseerr_response else 'None'}")
-            return jellyseerr_response
-
-        # Fallback to Radarr/Sonarr if Jellyseerr is not configured
-        self.logger.info("Jellyseerr not configured or request not handled by Jellyseerr, proceeding with Radarr/Sonarr.")
-
+        # Fallback to Radarr/Sonarr if neither Overseerr nor Jellyseerr is configured
+        self.logger.info("Overseerr/Jellyseerr not configured or request not handled, proceeding with Radarr/Sonarr.")
         actual_quality_profile_id_to_use = quality_profile_id
         request_response: Optional[APIResponse] = None
 
@@ -1088,17 +1153,26 @@ class Discovarr:
         profiles_response: Optional[APIResponse] = None
 
         try:
-            if self.jellyseerr_enabled and self.jellyseerr:
+            if self.overseerr_enabled and self.overseerr:
+                self.logger.info("Overseerr is enabled, fetching profiles through it.")
+                if media_type == "movie":
+                    profiles_response = self.overseerr.get_radarr_quality_profiles(default_profile_id=self.overseerr_default_radarr_quality_profile_id)
+                elif media_type == "tv":
+                    profiles_response = self.overseerr.get_sonarr_quality_profiles(default_profile_id=self.overseerr_default_sonarr_quality_profile_id)
+                else:
+                    self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
+                    return None
+            elif self.jellyseerr_enabled and self.jellyseerr:
                 self.logger.info("Jellyseerr is enabled, fetching profiles through it.")
                 if media_type == "movie":
-                    profiles_response = self.jellyseerr.get_radarr_quality_profiles()
+                    profiles_response = self.jellyseerr.get_radarr_quality_profiles(default_profile_id=self.jellyseerr_default_radarr_quality_profile_id)
                 elif media_type == "tv":
-                    profiles_response = self.jellyseerr.get_sonarr_quality_profiles()
+                    profiles_response = self.jellyseerr.get_sonarr_quality_profiles(default_profile_id=self.jellyseerr_default_sonarr_quality_profile_id)
                 else:
                     self.logger.error(f"Invalid media type: {media_type}. Must be 'tv' or 'movie'")
                     return None
             else:
-                self.logger.info("Jellyseerr not enabled, fetching profiles from Radarr/Sonarr directly.")
+                self.logger.info("Overseerr/Jellyseerr not enabled, fetching profiles from Radarr/Sonarr directly.")
                 if media_type == "movie" and self.radarr:
                     profiles_response = self.radarr.get_quality_profiles(default_profile_id=self.radarr_default_quality_profile_id)
                 elif media_type == "tv" and self.sonarr:
@@ -1117,6 +1191,46 @@ class Discovarr:
                 
         except Exception as e:
             self.logger.error(f"Error retrieving quality profiles for {media_type}: {e}", exc_info=True)
+            return None
+
+    def get_jellyseerr_users(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get all users from Jellyseerr.
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: A list of user objects from Jellyseerr,
+                                            or None if Jellyseerr is not enabled or an error occurs.
+        """
+        if self.jellyseerr:
+            self.logger.info("Retrieving all users from Jellyseerr.")
+            response = self.jellyseerr.get_users()
+            if response.success:
+                return response.data
+            else:
+                self.logger.error(f"Failed to get users from Jellyseerr: {response.message}")
+                return None
+        else:
+            self.logger.warning("Jellyseerr is not configured/enabled to retrieve users.")
+            return None
+
+    def get_overseerr_users(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get all users from Overseerr.
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: A list of user objects from Overseerr,
+                                            or None if Overseerr is not enabled or an error occurs.
+        """
+        if self.overseerr:
+            self.logger.info("Retrieving all users from Overseerr.")
+            response = self.overseerr.get_users()
+            if response.success:
+                return response.data
+            else:
+                self.logger.error(f"Failed to get users from Overseerr: {response.message}")
+                return None
+        else:
+            self.logger.warning("Overseerr is not configured/enabled to retrieve users.")
             return None
 
     def get_users(self) -> Optional[List[LibraryUser]]:
