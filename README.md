@@ -26,16 +26,20 @@ With Discovarr, you can:
 
 ## Supported Providers
 
-*   **Media Servers:**
+*   **Library:**
     *   Jellyfin
     *   Plex
-*   **Watch History Sync:**
-    *   Trakt.tv
-*   **Downloaders:**
+    *   Trakt.tv (Watch History Sync Only)
+*   **Request:**
     *   Radarr (Movies)
     *   Sonarr (TV Shows)
+    *   Jellyseerr
+    *   Overseer
 *   **LLM:**
     *   Google Gemini
+    *   OpenAI 
+        *   Supports all services that adhere to the OpenAI API spec. Requires the [Responses API](https://platform.openai.com/docs/api-reference/responses/create) for structured output. 
+        *   Continue to use the separate Ollama provider until they add the Responses API. See https://github.com/ollama/ollama/issues/9659
     *   Ollama (for local models)
 ## Key Features
 
@@ -45,9 +49,10 @@ With Discovarr, you can:
     *   Support for **Trakt.tv** to sync watch history.
 *   **Downloader Integration:**
     *   Integrate with **Radarr** for movie requests and **Sonarr** for TV show requests.
+    *   Supports Jellyseerr and Overseerr.
     *   Manage quality profiles for downloads.
 *   **AI-Powered Recommendations:**
-    *   Utilize **Google Gemini AI** to generate personalized movie and TV show recommendations.
+    *   Utilize **Google Gemini** and **OpenAI** to generate personalized movie and TV show recommendations.
     *   Customize prompts and exclude existing media or ignored titles from suggestions. Prompts support templating with dynamic variables. 
     *   Leverage your "favorites" from Jellyfin/Plex to influence recommendations.
     *   Support for local AI models via **Ollama**.
@@ -57,10 +62,6 @@ With Discovarr, you can:
     *   Schedule jobs to process watch history and generate new media suggestions.
     *   Manually trigger scheduled jobs as needed.
     *   Uses APScheduler and supports cron syntax. 
-*   **Media Management:**
-    *   View active and ignored media suggestions.
-    *   Toggle the ignore status of media items.
-    *   Delete media entries from the Discovarr database.
 *   **Search & Discovery:**
     *   Save and manage custom search prompts for AI recommendations.
     *   Run saved searches to get fresh suggestions.
@@ -73,21 +74,19 @@ With Discovarr, you can:
     *   Manage all service integrations and application settings through a persistent database configuration.
     *   Settings can be overridden by environment variables.
 *   **Database & Backup:**
-    *   Uses SQLite for data persistence via the Peewee ORM. 
+    *   Use SQLite or PostgreSQL for data persistence via the Peewee ORM. 
     *   Automatic database backups before schema migrations/upgrades.
 *   **Monitoring & Stats:**
-    *   Track Gemini API token usage for searches.
+    *   Track token usage for searches.
     *   View watch history grouped by user and date range.
 
 ## Prerequisites
 
-- Jellyfin URL and API key
+- Jellyfin URL and API key (or other Library Provider)
     - Can use docker container name in the URL if hosted on the same docker network
-- Radarr URL and API key
+- Sonarr/Radarr URL and API key (or other Request Provider)
     - Can use docker container name in the URL if hosted on the same docker network
-- Sonarr URL and API key
-    - Can use docker container name in the URL if hosted on the same docker network
-- Gemini API key
+- Gemini API key (or other LLM Provider)
 - TMDB API key
 
 ## Background
@@ -134,7 +133,9 @@ services:
       - ./cache:/cache
 ```
 
-### Environment Variables (optional)
+### Environment Variables 
+* These are optional and can be set in the UI 
+* If specified will overwrite existing settings
 ```
 - PUID=1884
 - PGID=1884
