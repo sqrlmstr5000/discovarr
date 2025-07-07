@@ -1,12 +1,12 @@
-import requests
 import json
 import logging
 import sys
 import os
-import traceback 
+import time
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Union
+from pathlib import Path
 import asyncio 
 import aiohttp # For async HTTP requests in the caching task
 from peewee import fn
@@ -131,9 +131,9 @@ class Discovarr:
         self.llm_service = None # Initialize LLMService instance
         self.tmdb = None
         self.research_service = None # Initialize ResearchService instance
+        self.image_cache = None
 
         self.db_path = db_path
-        self.image_cache = ImageCacheService() # Initialize ImageCacheService
         # Load backup setting first as it's needed for Database initialization
         # Initialize Database with the backup setting
         self.db = Database(self.db_path)
@@ -261,6 +261,8 @@ class Discovarr:
         except ValueError as e:
             self.logger.error(f"Configuration validation error: {e}")
  
+        self.image_cache = ImageCacheService() # Initialize ImageCacheService
+
         # (Re)Initialize services with the new configuration
         self.plex = None # Reset before potential re-init
         self.jellyfin = None # Reset before potential re-init
@@ -543,8 +545,8 @@ class Discovarr:
                 poster_url = None
                 poster_url_source =  f"https://image.tmdb.org/t/p/w500{tmdb_media_detail.get('poster_path')}" 
                 # Ensure we have a URL and an ID for caching. Only save to cache if necessary.
-                if poster_url_source and tmdb_id and (self.auto_media_save or search_id): 
-                    poster_url = await self._cache_image_if_needed(poster_url_source, "media", tmdb_id)
+                if poster_url_source and tmdb_id and (self.auto_media_save or search_id):
+                    poster_url = await self._cache_image_if_needed(poster_url_source, "media", tmdb_id, media_type)
 
                 # Data validation
                 rt_score = media.get("rt_score")
@@ -799,7 +801,7 @@ class Discovarr:
             return None
         return await self.llm_service.get_available_models()
 
-    async def _cache_image_if_needed(self, image_url: str, provider_name: str, item_id: Union[str, int]) -> Optional[str]:
+    async def _cache_image_if_needed(self, image_url: str, provider_name: str, item_id: Union[str, int], media_type: str) -> Optional[str]:
         """
         Asynchronously caches an image if a valid external URL is provided.
         Returns the path to the cached image or the original URL if caching is skipped/failed.
@@ -809,16 +811,15 @@ class Discovarr:
             self.logger.debug(f"Skipping image cache for {provider_name} item {item_id}: Missing URL or item ID.")
             return original_url
 
-        # Check if the URL looks like it's already a local cached path
-        if image_url.startswith(f"/{self.image_cache.cache_base_dir.name}/"):
-            self.logger.debug(f"Skipping image cache for {provider_name} item {item_id}: URL '{image_url}' appears to be already cached.")
-            return
-
         try:
             # Create a new session for each task for simplicity in fire-and-forget.
             # For very high volume, a shared session might be considered.
             async with aiohttp.ClientSession() as session:
-                cached_path = await self.image_cache.save_image_from_url(session, image_url, provider_name, str(item_id))
+                cached_path = await self.image_cache.save_image_from_url(session=session, 
+                                                                         image_url=image_url, 
+                                                                         provider_name=provider_name, 
+                                                                         item_id=str(item_id),
+                                                                         media_type=media_type)
                 return cached_path if cached_path else original_url
         except Exception as e:
             self.logger.error(f"Exception in image caching task for {provider_name} item {item_id} (URL: {image_url}): {e}", exc_info=True)
@@ -866,7 +867,7 @@ class Discovarr:
                         poster_url_source_val = f"https://image.tmdb.org/t/p/w500{tmdb_details.get('poster_path')}"
                     
                     if poster_url_source_val:
-                         cached_poster_path = await self._cache_image_if_needed(poster_url_source_val, source, item.id)
+                         cached_poster_path = await self._cache_image_if_needed(image_url=poster_url_source_val, provider_name=source, item_id=item.id, media_type=item.type)
                     
                     network_names = []
                     genre_names = []
@@ -1221,6 +1222,122 @@ class Discovarr:
         except Exception as e:
             self.logger.error(f"Error retrieving quality profiles for {media_type}: {e}", exc_info=True)
             return None
+
+    async def reload_image_cache(self) -> Dict[str, Any]:
+        """
+        Loops through every item in the media table and checks if the cached poster image
+        exists in the filesystem. If not, it attempts to re-download and cache the image
+        using the original source URL.
+        """
+        self.logger.info("Starting image cache reload process...")
+        # IMPORTANT: This method relies on self.db.get_all_media() which must be implemented
+        # in services/database.py. Without it, this method will fail at runtime.
+        all_media_items = self.db.get_all_media() 
+        if not all_media_items:
+            self.logger.info("No media items found in the database to check for cached images.")
+            return {"success": True, "message": "No media items found to process."}
+
+        re_cached_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        for media_item_dict in all_media_items:
+            media_id = media_item_dict.get('id')
+            media_type = media_item_dict.get('media_type')
+            title = media_item_dict.get('title', 'Unknown Title')
+            poster_url_cached = media_item_dict.get('poster_url') # This is the relative path like 'plex_123.jpg'
+            poster_url_source = media_item_dict.get('poster_url_source') # This is the original external URL
+            tmdb_id = media_item_dict.get('tmdb_id')
+            source_provider = media_item_dict.get('source_provider') # Default provider name
+
+            if not poster_url_source:
+                self.logger.debug(f"Skipping media '{title}' (ID: {media_id}) - no original poster_url_source to re-cache from.")
+                skipped_count += 1
+                continue
+
+            # Determine the item_id to pass to _cache_image_if_needed.
+            # It expects a string.
+            item_id_for_cache = tmdb_id if tmdb_id else str(media_id)
+            if not item_id_for_cache: # Should not happen if media_id is always present
+                self.logger.warning(f"Cannot determine item_id for caching for '{title}' (ID: {media_id}). Skipping.")
+                skipped_count += 1
+                continue
+
+            # Construct the EXPECTED full path of the cached image based on current naming convention.
+            # This is what save_image_from_url would return if it were to cache this image.
+            # We need to determine the filename from the source URL to correctly check for existence.
+            expected_filename = f"{str(item_id_for_cache).replace('/', '_').replace('\\', '_')}{self.image_cache._get_file_extension_from_url(poster_url_source)}" # Use item_id_for_cache here
+            expected_relative_path = Path(media_type) / expected_filename # Use expected_filename here
+            full_cached_path = self.image_cache.cache_base_dir / expected_relative_path # Use expected_relative_path here
+            if source_provider:
+                full_cached_path_old = self.image_cache.cache_base_dir / f"{source_provider}_{expected_filename}" # Old cached path
+                old_filename_relative = f"{source_provider}_{expected_filename}"
+            else:
+                full_cached_path_old = self.image_cache.cache_base_dir / f"media_{expected_filename}" # Old cached path
+                old_filename_relative = f"media_{expected_filename}"
+
+            if full_cached_path_old.exists():
+                self.logger.info(f"Found old cached image at {full_cached_path_old}. Deleting it to be replaced by new format.")
+                # The relative path for the old format is just the filename.
+                self.image_cache.delete_cached_image(old_filename_relative)
+
+            if full_cached_path.exists():
+                self.logger.debug(f"Cached image for '{title}' (ID: {media_id}) already exists at {full_cached_path}. Skipping re-cache.")
+                skipped_count += 1
+                # If the file exists but the DB's poster_url is incorrect, update it.
+                if poster_url_cached != str(expected_relative_path):
+                    self.logger.info(f"Updating DB poster_url for '{title}' (ID: {media_id}) from '{poster_url_cached}' to '{expected_relative_path}'.")
+                    update_success = self.db.update_media(
+                        media_id,
+                        {"poster_url": str(expected_relative_path)}
+                    )
+                    if update_success:
+                        self.logger.info(f"Successfully updated poster_url in DB for '{title}' (ID: {media_id}).")
+                    else:
+                        self.logger.error(f"Failed to update poster_url in DB for '{title}' (ID: {media_id}) even though file exists.")
+                continue
+            
+            self.logger.info(f"Cached image for '{title}' (ID: {media_id}) not found or path invalid. Attempting to re-cache from source: {poster_url_source}")
+                          
+            try:
+                # _cache_image_if_needed internally creates an aiohttp.ClientSession
+                new_cached_filename = await self._cache_image_if_needed(
+                    image_url=poster_url_source,
+                    provider_name=source_provider,
+                    item_id=item_id_for_cache,
+                    media_type=media_type,
+                )
+
+                if new_cached_filename and new_cached_filename != poster_url_source: # Check if caching succeeded and returned a relative path
+                    # Update the media item in the database with the new cached relative path.
+                    # The save_image_from_url returns the relative path (e.g., "plex/movie/123.jpg").
+                    update_success = self.db.update_media(
+                        media_id,
+                        {"poster_url": new_cached_filename}
+                    )
+                    if update_success:
+                        self.logger.info(f"Successfully re-cached and updated poster_url for '{title}' (ID: {media_id}) to {new_cached_filename}.")
+                        re_cached_count += 1
+                    else:
+                        self.logger.error(f"Failed to update poster_url in DB for '{title}' (ID: {media_id}).")
+                        error_count += 1
+                    # Sleep for 5 seconds to prevent from rate limiting
+                    time.sleep(5)
+                else:
+                    self.logger.warning(f"Image re-caching for '{title}' (ID: {media_id}) from {poster_url_source} did not return a new filename or returned original URL.")
+                    error_count += 1 # Count as error if it didn't successfully cache
+            except Exception as e:
+                self.logger.error(f"Unexpected error during re-caching image for '{title}' (ID: {media_id}): {e}", exc_info=True)
+                error_count += 1
+
+        self.logger.info(f"Image cache reload complete. Re-cached: {re_cached_count}, Skipped: {skipped_count}, Errors: {error_count}.")
+        return {
+            "success": True,
+            "message": f"Image cache reload complete. Re-cached: {re_cached_count}, Skipped: {skipped_count}, Errors: {error_count}.",
+            "re_cached_count": re_cached_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count
+        }
 
     def get_jellyseerr_users(self) -> Optional[List[Dict[str, Any]]]:
         """

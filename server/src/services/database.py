@@ -1030,6 +1030,19 @@ class Database:
             self.logger.error(f"Error deleting MediaResearch entry with ID {research_id}: {e}", exc_info=True)
             return False
         
+    def get_all_media(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all media entries from the database.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries, each representing a media entry.
+        """
+        try:
+            media_items = Media.select()
+            return [model_to_dict(m) for m in media_items]
+        except Exception as e:
+            self.logger.error(f"Error retrieving all media items: {e}")
+            return []
     def get_setting(self, name: str) -> Optional[Dict[str, Any]]:
         """Get a setting by name."""
         try:

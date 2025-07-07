@@ -24,6 +24,7 @@ const traktAuthDetails = ref({ user_code: '', verification_url: '' });
 const traktAuthLoading = ref(false);
 const traktAuthError = ref('');
 const tokenUsageError = ref(null)
+const loadingReloadCache = ref(false); // <--- ADDED THIS LINE
 
 const selectedRange = ref('all_time');
 const startDate = ref('');
@@ -138,6 +139,24 @@ const loadSettings = async () => {
     console.error('Error loading settings:', error)
   }
 }
+
+// New method for reloading image cache
+const reloadImageCache = async () => {
+  loadingReloadCache.value = true;
+  try {
+    const response = await fetch(`${config.apiUrl}/image-cache/reload`, {
+      method: 'POST',
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to reload image cache');
+    toastStore.show(data.message, 'success');
+  } catch (error) {
+    console.error('Error reloading image cache:', error);
+    toastStore.show(`Failed to reload image cache: ${error.message}`, 'error');
+  } finally {
+    loadingReloadCache.value = false;
+  }
+};
 
 // Load LLM models (Gemini, Ollama, etc.)
 const fetchLlmModels = async () => {
@@ -671,6 +690,9 @@ watch(() => route.hash, (newHash) => {
                 </a>
               </li>
             </ul>
+          </li>
+          <li>
+            <a href="#section-admin" class="text-sm font-semibold text-gray-500 hover:text-amber-400 block mb-2">Admin</a>
           </li>
         </ul>
       </nav>
@@ -1221,6 +1243,29 @@ watch(() => route.hash, (newHash) => {
           </div>
         </div>
         </div>
+        </div>
+        <!-- Admin Section -->
+        <div id="section-admin" class="mb-8">
+          <h2 class="text-2xl text-white font-semibold mb-4">Admin</h2>
+          <div class="bg-gray-900 rounded-lg p-6 shadow-md">
+            <div class="flex flex-col space-y-4">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-300">Reload Image Cache</span>
+                <button
+                  @click="reloadImageCache"
+                  :disabled="loadingReloadCache"
+                  class="px-4 py-2 rounded-lg font-semibold text-white transition-colors duration-150 ease-in-out"
+                  :class="loadingReloadCache 
+                    ? 'bg-gray-600 cursor-not-allowed' 
+                    : 'bg-discovarr hover:bg-discovarr-dark focus:outline-none focus:ring-2 focus:ring-discovarr-light focus:ring-opacity-75'"
+                >
+                  <span v-if="loadingReloadCache">Reloading...</span>
+                  <span v-else>Reload Image Cache</span>
+                </button>
+              </div>
+              <p class="text-sm text-gray-500">Checks all media items in the database and re-caches missing poster images from their original source URLs.</p>
+            </div>
+          </div>
         </div>
       </div>
     </main>

@@ -788,6 +788,17 @@ async def get_media_field_values(
         logger.error(f"Error getting unique media values for column '{col_name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching unique values for column '{col_name}'.")
 
+@api_app.post("/image-cache/reload")
+async def reload_image_cache_endpoint(
+    discovarr: Discovarr = Depends(get_discovarr),
+):
+    """
+    Triggers a reload of the image cache, checking for missing files and re-downloading them.
+    """
+    logger.info("Received request to reload image cache.")
+    result = await discovarr.reload_image_cache()
+    return result
+
 @api_app.get("/search")
 async def get_searches(
     limit: int = 10,
